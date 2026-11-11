@@ -1,0 +1,56 @@
+# BLOWOUT
+
+Bass boost and loud the hell out of any song, live. Clipping is a feature.
+
+Paste a YouTube, YouTube Music or Spotify link (or open an audio file) and it plays inside the
+app with its sound pushed through:
+
+```
+media ─► low-shelf (bass) ─► drive (loudness) ─► clipper ─► output volume ─► speakers
+```
+
+Nothing is downloaded or saved. The real page plays as normal and only the sound on its way to
+your speakers is changed.
+
+## Desktop app (Windows)
+
+```bash
+npm install
+npm start
+```
+
+`npm run build` makes a double-click `BLOWOUT.exe` in `dist/BLOWOUT-win32-x64`.
+
+- **Links:** the address bar takes a link, a `spotify:` URI, or plain words (searches YouTube).
+- **Files:** OPEN FILE or drag one in (.mp3, .wav, .flac, .ogg, .m4a).
+- **Controls:** BASS and LOUD go to +40 dB each, three clip styles, four presets.
+- **Output volume** comes after the clipper, so you can keep the crunch and turn the level down.
+
+### Signing in
+
+Sign in on the site's own page inside the app (YouTube Music, Spotify). Your details go straight
+to that site; BLOWOUT never sees them. Google blocks sign-ins from browsers embedded in apps, so
+Google's sign-in pages (and only those) are shown a Firefox identity. Google can change that
+check at any time.
+
+### Spotify
+
+Spotify's web player is DRM-protected, so the app runs on the
+[castlabs Electron build](https://github.com/castlabs/electron-releases), which adds Google's
+Widevine module (fetched from Google on first launch). The build here is not VMP-signed; if
+Spotify ever refuses to play, that is the first thing to look at.
+
+## Phone web app (iPhone, Android)
+
+`docs/` is a small installable web app with the same chain for audio files on your phone. Open it
+in Safari, tap Share, then "Add to Home Screen". It cannot do links: phone browsers don't let a
+page touch another site's audio.
+
+## Self-test
+
+`npm run selftest` opens the app muted and checks that sound really flows through the chain for a
+file, a YouTube video, an off-page player, and DRM-protected audio. It uses a throwaway profile.
+
+## License
+
+[GNU General Public License v3.0](LICENSE) or later.

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; media-src blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>BLOWOUT</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">BLOW<span>OUT</span></div>
+    <button id="back" class="icon-btn" title="Back" aria-label="Back">&#8592;</button>
+    <form id="go-form" class="address">
+      <input id="address" type="text" spellcheck="false" autocomplete="off"
+             placeholder="Paste a YouTube, YouTube Music or Spotify link, or type a song to search">
+      <button type="submit" class="btn btn-hot">PLAY</button>
+    </form>
+    <button id="open-file" class="btn">OPEN FILE</button>
+    <input id="file-input" type="file" hidden
+           accept="audio/*,video/mp4,video/webm,.mp3,.wav,.flac,.ogg,.m4a,.opus,.aac">
+  </header>
+
+  <main class="layout">
+    <section id="stage" class="stage" data-view="empty">
+      <div class="pane pane-empty">
+        <p class="big">PASTE A LINK<br>OR DROP A FILE</p>
+        <p class="sub">It plays right here, and everything on the right happens to it live.</p>
+        <div class="quick">
+          <button class="btn" data-url="https://www.youtube.com/">YouTube</button>
+          <button class="btn" data-url="https://music.youtube.com/">YouTube Music</button>
+          <button class="btn" data-url="https://open.spotify.com/">Spotify</button>
+        </div>
+      </div>
+
+      <webview id="view" class="pane pane-web" src="about:blank" partition="persist:blowout"></webview>
+
+      <div class="pane pane-file">
+        <p class="eyebrow">NOW PLAYING</p>
+        <p id="file-name" class="file-name"></p>
+        <div class="transport">
+          <button id="play" class="play-btn" aria-label="Play or pause">&#9654;</button>
+          <span id="time-now" class="time">0:00</span>
+          <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek">
+          <span id="time-total" class="time">0:00</span>
+          <button id="loop" class="btn btn-small" aria-pressed="false">LOOP</button>
+        </div>
+        <audio id="local"></audio>
+      </div>
+
+      <div id="drop-hint" class="drop-hint">DROP IT</div>
+      <div id="status" class="status" hidden></div>
+    </section>
+
+    <aside class="panel">
+      <div class="meter">
+        <canvas id="bars"></canvas>
+        <div class="meter-foot">
+          <span id="clip-light" class="clip-light">CLIP</span>
+          <span id="over" class="over">&nbsp;</span>
+        </div>
+      </div>
+
+      <button id="power" class="power" aria-pressed="true">BOOST: ON</button>
+
+      <div class="group">
+        <p class="label">PRESETS</p>
+        <div class="presets">
+          <button class="btn" data-preset="warm">WARM</button>
+          <button class="btn" data-preset="boosted">BOOSTED</button>
+          <button class="btn" data-preset="fried">FRIED</button>
+          <button class="btn btn-hot" data-preset="earrape">EARRAPE</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <label class="slider">
+          <span class="label">BASS <output id="bass-out"></output></span>
+          <input id="bass" type="range" min="0" max="40" step="1">
+        </label>
+        <label class="slider">
+          <span class="label">BASS REACH <output id="freq-out"></output></span>
+          <input id="freq" type="range" min="40" max="300" step="5">
+        </label>
+        <label class="slider">
+          <span class="label">LOUD <output id="loud-out"></output></span>
+          <input id="loud" type="range" min="0" max="40" step="1">
+        </label>
+      </div>
+
+      <div class="group">
+        <p class="label">CLIP STYLE</p>
+        <div class="segmented" id="clip">
+          <button data-clip="soft">SOFT</button>
+          <button data-clip="hard">HARD</button>
+          <button data-clip="square">SQUARE</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <label class="slider">
+          <span class="label">OUTPUT VOLUME <output id="out-out"></output></span>
+          <input id="out" type="range" min="0" max="100" step="1">
+        </label>
+        <p class="hint">Comes after the clipper, so turning this down keeps all the crunch and just saves your ears.</p>
+      </div>
+    </aside>
+  </main>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

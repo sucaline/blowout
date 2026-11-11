@@ -1,0 +1,119 @@
+// Dev check, run with `npm run selftest`. Everything is muted at the speaker, but the audio
+// graph still runs, so the meter tells us whether sound is really flowing through the chain.
+const { app, ipcMain } = require('electron');
+const fs = require('fs');
+const path = require('path');
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const VIDEO = process.env.SELFTEST_URL || 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
+const OUT = process.env.SELFTEST_OUT || __dirname;
+
+module.exports = async function selftest(win) {
+  win.webContents.setAudioMuted(true);
+  win.setAlwaysOnTop(true); // a covered window stops painting, which breaks the screenshots
+  app.on('web-contents-created', (_e, wc) => wc.setAudioMuted(true));
+  win.webContents.on('console-message', (e) => console.log('[page]', e.message));
+
+  const seen = { host: { frames: 0, peak: 0, bass: 0 }, guest: { frames: 0, peak: 0, bass: 0 } };
+  ipcMain.on('boost:meter', (event, m) => {
+    const s = seen[event.sender === win.webContents ? 'host' : 'guest'];
+    s.frames++;
+    s.peak = Math.max(s.peak, m.peak);
+    s.bass = Math.max(s.bass, ...m.bars.slice(0, 8));
+  });
+  const shot = async (name) => {
+    try {
+      fs.writeFileSync(path.join(OUT, name), (await win.webContents.capturePage()).toPNG());
+    } catch (err) {
+      console.log('RESULT screenshot failed', name, err.message);
+    }
+  };
+  const run = (js) => win.webContents.executeJavaScript(js, true);
+
+  await new Promise((r) => win.webContents.once('did-finish-load', r));
+  await sleep(500);
+  await shot('selftest-1-empty.png');
+
+  // 1) Local file: a quiet 55 Hz + 1 kHz tone (peak 0.15), pushed through the FRIED preset.
+  await run(`(() => {
+    const rate = 44100, n = rate * 4, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) {
+      const t = i / rate;
+      const s = 0.1 * Math.sin(2 * Math.PI * 55 * t) + 0.05 * Math.sin(2 * Math.PI * 1000 * t);
+      v.setInt16(44 + i * 2, s * 32767, true);
+    }
+    update({ on: false });
+    openFile(new File([buf], 'test tone.wav', { type: 'audio/wav' }));
+  })()`);
+  await sleep(1500);
+  const clean = { ...seen.host };
+  seen.host.peak = 0; seen.host.bass = 0;
+  await run(`document.querySelector('[data-preset="fried"]').click()`);
+  await sleep(1500);
+  const fried = { ...seen.host };
+  await shot('selftest-2-file.png');
+  console.log('RESULT file clean ', JSON.stringify(clean));
+  console.log('RESULT file fried ', JSON.stringify(fried));
+
+  const guest = (js) => run(`view.executeJavaScript(${JSON.stringify(js)})`).catch((e) => `ERR ${e.message}`);
+  const open = async (url, ms) => {
+    await run(`openLink(${JSON.stringify(url)})`);
+    await sleep(ms);
+    seen.guest = { frames: 0, peak: 0, bass: 0 };
+  };
+  const identity = `JSON.stringify({ ua: navigator.userAgent, brands: (navigator.userAgentData || {}).brands, title: document.title, host: location.host })`;
+
+  // 2) A YouTube link, boosted as it plays.
+  await run(`openLink(${JSON.stringify(VIDEO)})`);
+  await sleep(12000);
+  await shot('selftest-3-youtube.png');
+  console.log('RESULT youtube    ', JSON.stringify(seen.guest));
+  console.log('RESULT view       ', await run(`JSON.stringify({ view: stage.dataset.view, url: view.getURL() })`));
+
+  // 3) A player that never puts its <audio> in the page (how Spotify does it).
+  await open('https://example.com/', 3000);
+  await guest(`(() => {
+    const rate = 44100, n = rate * 3, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, 3000 * Math.sin(2 * Math.PI * 60 * i / rate), true);
+    window.__tone = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+    window.__tone.loop = true;
+    window.__tone.play();
+    return document.querySelectorAll('audio, video').length;
+  })()`);
+  await sleep(2000);
+  console.log('RESULT detached   ', JSON.stringify(seen.guest));
+
+  // 4) Google's sign-in page gets the Firefox identity; everything else stays Chrome.
+  await open('https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F', 7000);
+  console.log('RESULT google     ', await guest(identity));
+  await shot('selftest-4-google.png');
+  await open('https://music.youtube.com/', 8000);
+  console.log('RESULT ytmusic    ', await guest(identity));
+  await shot('selftest-5-ytmusic.png');
+
+  // 5) Widevine DRM: is it there, and does protected audio still reach our chain?
+  console.log('RESULT widevine   ', await guest(`navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{
+    initDataTypes: ['cenc'], audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
+  }]).then(() => 'available', (e) => 'MISSING ' + e.message)`));
+  await open('https://shaka-player-demo.appspot.com/demo/#asset=https://storage.googleapis.com/shaka-demo-assets/angel-one-widevine/dash.mpd;license=https://cwip-shaka-proxy.appspot.com/no_auth;panel=HOME;build=uncompiled', 6000);
+  await sleep(12000);
+  console.log('RESULT drm audio  ', JSON.stringify(seen.guest));
+  console.log('RESULT drm video  ', await guest(`JSON.stringify([...document.querySelectorAll('video')].map((v) => ({ t: v.currentTime, paused: v.paused, keys: !!v.mediaKeys })))`));
+  await shot('selftest-6-drm.png');
+
+  // 6) Spotify's web player loads (playing needs your own login).
+  await open('https://open.spotify.com/', 9000);
+  console.log('RESULT spotify    ', await guest(identity));
+  await shot('selftest-7-spotify.png');
+  app.exit(0); // not quit(): a page's "leave site?" handler can veto that and hang the run
+};
