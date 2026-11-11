@@ -1,6 +1,6 @@
 // `components` only exists in the castlabs Electron build, which adds the Widevine DRM
 // module that Spotify's web player needs. Stock Electron runs everything except Spotify.
-const { app, BrowserWindow, components, ipcMain, session, webContents } = require('electron');
+const { app, BrowserWindow, components, ipcMain, session, shell, webContents } = require('electron');
 const path = require('path');
 
 const PRELOAD = path.join(__dirname, 'preload.js');
@@ -80,28 +80,51 @@ ipcMain.on('boost:hello', (event) => {
   event.returnValue = { role: isHost(event) ? 'host' : 'guest', params };
 });
 
+const toWebviews = (channel, payload) => {
+  for (const wc of webContents.getAllWebContents()) {
+    if (wc.getType() === 'webview') wc.send(channel, payload);
+  }
+};
+
+// Songs can play in two places besides local files: the page inside the app ('web') and
+// your real Chrome through the BLOWOUT Link extension ('chrome').
+const link = require('./link')({
+  onMessage(message) {
+    if (!win) return;
+    if (message.type === 'track') win.webContents.send('boost:track', { ...message.track, via: 'chrome' });
+    else if (message.type === 'meter') win.webContents.send('boost:meter', { ...message.meter, role: 'chrome' });
+  },
+  onChange(linked) {
+    if (linked) link.send({ type: 'params', params });
+    if (win) win.webContents.send('boost:link', linked);
+  },
+});
+ipcMain.handle('boost:linked', () => link.linked);
+// The extension ships next to the app as a plain folder, because Chrome loads it from disk.
+const EXTENSION_DIR = app.isPackaged ? path.join(process.resourcesPath, 'extension') : path.join(__dirname, 'extension');
+ipcMain.on('boost:show-extension', (event) => { if (isHost(event)) shell.openPath(EXTENSION_DIR); });
+
 ipcMain.on('boost:params', (event, next) => {
   if (!isHost(event)) return;
   params = next;
   for (const wc of webContents.getAllWebContents()) wc.send('boost:params', params);
+  link.send({ type: 'params', params });
 });
 
-ipcMain.on('boost:pause-web', (event) => {
+ipcMain.on('boost:pause', (event, target) => {
   if (!isHost(event)) return;
-  for (const wc of webContents.getAllWebContents()) {
-    if (wc.getType() === 'webview') wc.send('boost:pause');
-  }
+  if (target !== 'chrome') toWebviews('boost:pause');
+  if (target !== 'web') link.send({ type: 'pause' });
 });
 
 ipcMain.on('boost:track', (event, track) => {
-  if (win && !isHost(event)) win.webContents.send('boost:track', track);
+  if (win && !isHost(event)) win.webContents.send('boost:track', { ...track, via: 'web' });
 });
 
-ipcMain.on('boost:control', (event, command) => {
+ipcMain.on('boost:control', (event, { action, time, target }) => {
   if (!isHost(event)) return;
-  for (const wc of webContents.getAllWebContents()) {
-    if (wc.getType() === 'webview') wc.send('boost:control', command);
-  }
+  if (target === 'chrome') link.send({ type: 'control', action, time });
+  else toWebviews('boost:control', { action, time });
 });
 
 require('./lyrics')(isHost);

@@ -1,0 +1,223 @@
+// BLOWOUT Link, the part that runs inside the music page itself. It does what the app's
+// own built-in browser does, but in your real Chrome:
+//
+//   media ─► low-shelf (bass) ─► drive (loudness) ─► clipper ─► output volume ─► speakers
+//
+// Settings arrive from the BLOWOUT app; the song, position and meter go back to it.
+// Until the app sends settings, the page's audio is left completely alone.
+(() => {
+  if (window.__blowoutLink) return;
+  window.__blowoutLink = true;
+
+  const send = (message) => {
+    document.dispatchEvent(new CustomEvent('blowout:out', { detail: JSON.stringify(message) }));
+  };
+
+  // ---------- audio engine ----------
+  const NEUTRAL = { on: false, bass: 0, freq: 120, loud: 0, clip: 'hard', out: 1 };
+  let params = NEUTRAL;
+
+  function makeCurve(fn) {
+    const n = 4097; // odd, so silence maps to exactly 0
+    const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) curve[i] = fn((i / (n - 1)) * 2 - 1);
+    return curve;
+  }
+  // A WaveShaper clamps anything past the ends of its curve, so a straight line is a hard clip.
+  const CURVES = {
+    hard: new Float32Array([-1, 1]),
+    soft: makeCurve((x) => Math.tanh(2.5 * x) / Math.tanh(2.5)),
+    square: makeCurve((x) => Math.tanh(40 * x)),
+  };
+
+  let ctx = null;
+  let input, shelf, drive, shaper, master, preClip, postClip, appliedCurve;
+  const known = new Set(); // every media element the page has shown or played
+  const hooked = new Set(); // the ones already routed through the chain
+  let armed = false; // becomes true the first time the app switches the boost on
+
+  function build() {
+    ctx = new AudioContext();
+    input = ctx.createGain();
+    shelf = ctx.createBiquadFilter();
+    shelf.type = 'lowshelf';
+    drive = ctx.createGain();
+    shaper = ctx.createWaveShaper();
+    master = ctx.createGain();
+    preClip = ctx.createAnalyser(); // how far over full scale we're pushing
+    preClip.fftSize = 2048;
+    postClip = ctx.createAnalyser(); // what it sounds like after the clipper
+    postClip.fftSize = 4096;
+    postClip.smoothingTimeConstant = 0.6;
+    input.connect(shelf).connect(drive).connect(shaper).connect(master).connect(ctx.destination);
+    drive.connect(preClip);
+    shaper.connect(postClip);
+    apply(true);
+  }
+
+  function apply(instant) {
+    if (!ctx) return;
+    const on = params.on;
+    const set = (param, value) => {
+      if (instant) param.value = value;
+      else param.setTargetAtTime(value, ctx.currentTime, 0.02);
+    };
+    set(shelf.frequency, params.freq);
+    set(shelf.gain, on ? params.bass : 0);
+    set(drive.gain, on ? 10 ** (params.loud / 20) : 1);
+    set(master.gain, on ? params.out : 1);
+    const curve = on ? CURVES[params.clip] || CURVES.hard : null;
+    if (curve !== appliedCurve) {
+      shaper.curve = curve;
+      appliedCurve = curve;
+    }
+  }
+
+  function hook(el) {
+    if (hooked.has(el)) return;
+    hooked.add(el);
+    if (!ctx) build();
+    try {
+      ctx.createMediaElementSource(el).connect(input);
+    } catch {
+      return; // something else already owns this element's audio
+    }
+    const wake = () => { if (ctx.state !== 'running') ctx.resume().catch(() => {}); };
+    el.addEventListener('play', wake);
+    el.addEventListener('playing', wake);
+    wake();
+  }
+
+  function notice(el) {
+    known.add(el);
+    if (armed) hook(el);
+  }
+
+  // Players like Spotify keep their <video>/<audio> out of the page, so catch play() itself.
+  const play = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function () {
+    try { notice(this); } catch {}
+    return play.apply(this, arguments);
+  };
+
+  // The page's own media-key handlers, so the app can press next/previous/seek.
+  const handlers = {};
+  const setHandler = MediaSession.prototype.setActionHandler;
+  MediaSession.prototype.setActionHandler = function (action, handler) {
+    handlers[action] = handler;
+    return setHandler.apply(this, arguments);
+  };
+  const act = (action, seekTime) => {
+    if (!handlers[action]) return false;
+    handlers[action]({ action, seekTime });
+    return true;
+  };
+
+  const playing = () => {
+    let fallback = null;
+    for (const el of known) {
+      if (!el.paused && !el.ended) return el;
+      if (el.currentTime > 0) fallback = el;
+    }
+    return fallback;
+  };
+
+  // ---------- meter: 48 log-spaced bars from 30 Hz to 16 kHz, plus the pre-clip peak ----------
+  const BARS = 48;
+  let freqData, timeData, edges;
+  let wasActive = false;
+
+  function measure() {
+    if (!freqData) {
+      freqData = new Uint8Array(postClip.frequencyBinCount);
+      timeData = new Float32Array(preClip.fftSize);
+      const hzPerBin = ctx.sampleRate / postClip.fftSize;
+      edges = [];
+      for (let i = 0; i <= BARS; i++) edges.push((30 * (16000 / 30) ** (i / BARS)) / hzPerBin);
+    }
+    postClip.getByteFrequencyData(freqData);
+    preClip.getFloatTimeDomainData(timeData);
+    const bars = [];
+    for (let i = 0; i < BARS; i++) {
+      const from = Math.floor(edges[i]);
+      const to = Math.max(from + 1, Math.ceil(edges[i + 1]));
+      let top = 0;
+      for (let b = from; b < to && b < freqData.length; b++) if (freqData[b] > top) top = freqData[b];
+      bars.push(top);
+    }
+    let peak = 0;
+    for (let i = 0; i < timeData.length; i++) {
+      const v = Math.abs(timeData[i]);
+      if (v > peak) peak = v;
+    }
+    return { bars, peak };
+  }
+
+  setInterval(() => {
+    for (const el of document.querySelectorAll('video, audio')) notice(el);
+    if (!ctx) return;
+    let active = false;
+    for (const el of hooked) {
+      if (!el.paused && !el.ended && el.readyState > 2) active = true;
+    }
+    if (active) send({ type: 'meter', meter: measure() });
+    else if (wasActive) send({ type: 'meter', meter: { bars: new Array(BARS).fill(0), peak: 0 } });
+    wasActive = active;
+  }, 40);
+
+  // ---------- the song, for the app's Now Playing screen ----------
+  let clickedAt = 0;
+  window.addEventListener('pointerdown', () => { clickedAt = Date.now(); }, true);
+  setInterval(() => {
+    const info = navigator.mediaSession && navigator.mediaSession.metadata;
+    if (!info || !info.title) return;
+    const el = playing();
+    const art = info.artwork && info.artwork.length ? info.artwork[info.artwork.length - 1].src : '';
+    send({
+      type: 'track',
+      track: {
+        title: info.title,
+        artist: info.artist || '',
+        album: info.album || '',
+        art,
+        time: el ? el.currentTime : 0,
+        duration: el && Number.isFinite(el.duration) ? el.duration : 0,
+        paused: !el || el.paused,
+        host: location.host,
+        clicked: Date.now() - clickedAt < 5000, // you just picked something, vs. autoplay moving on
+      },
+    });
+  }, 250);
+
+  // ---------- from the app ----------
+  document.addEventListener('blowout:in', (event) => {
+    let message;
+    try {
+      message = JSON.parse(event.detail);
+    } catch {
+      return;
+    }
+    if (message.type === 'params') {
+      params = message.params || NEUTRAL; // null = the app went away: stop boosting
+      if (params.on && !armed) {
+        armed = true;
+        for (const el of known) hook(el);
+      }
+      apply(false);
+    } else if (message.type === 'pause') {
+      for (const el of known) el.pause();
+    } else if (message.type === 'control') {
+      const el = playing();
+      const { action, time } = message;
+      if (action === 'next') act('nexttrack');
+      else if (action === 'prev') act('previoustrack');
+      else if (action === 'seek') {
+        if (!act('seekto', time) && el) el.currentTime = time;
+      } else if (action === 'toggle' && el) {
+        if (act(el.paused ? 'play' : 'pause')) return;
+        if (el.paused) el.play().catch(() => {});
+        else el.pause();
+      }
+    }
+  });
+})();

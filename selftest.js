@@ -84,7 +84,7 @@ module.exports = async function selftest(win) {
     duration: Math.round(duration()), position: Math.round(position()), paused: isPaused(),
     lines: lyrics ? lyrics.lines.length : 0, timed: Boolean(lyrics && lyrics.timed), active,
     translated: lyrics ? lyrics.els.filter((el) => el.lastChild.textContent).length : 0,
-    note: lyrics ? '' : box.textContent,
+    note: lyrics ? '' : box.textContent, status: $('status').hidden ? '' : $('status').textContent,
   })`));
   await shot('selftest-3b-now-playing.png');
   const before = await run(`position()`);
@@ -94,6 +94,42 @@ module.exports = async function selftest(win) {
   await run(`control('toggle')`);
   await sleep(1500);
   console.log('RESULT pause      ', await run(`JSON.stringify({ paused: isPaused() })`));
+
+  // 2c) Chrome link: a stand-in browser with the extension loaded plays a song; the app should
+  //     link, follow it, boost it and control it.
+  const { BrowserWindow, session } = require('electron');
+  const sim = session.fromPartition('persist:chrome-sim');
+  await (sim.extensions || sim).loadExtension(path.join(__dirname, 'extension'));
+  const browser = new BrowserWindow({ show: false, webPreferences: { session: sim, backgroundThrottling: false } });
+  browser.webContents.on('console-message', (e) => console.log('[sim]', e.message));
+  await browser.loadURL(process.env.SELFTEST_SONG || 'https://music.youtube.com/watch?v=dQw4w9WgXcQ');
+  await sleep(4000);
+  if (browser.webContents.getURL().includes('consent.youtube.com')) {
+    // Fresh test profile: decline the optional cookies and carry on to the song.
+    await browser.webContents.executeJavaScript(`(() => {
+      const b = [...document.querySelectorAll('button, input[type=submit]')].find((el) => /reject all/i.test(el.textContent || el.value || el.getAttribute('aria-label') || ''));
+      if (b) b.click();
+    })()`);
+  }
+  await sleep(14000);
+  console.log('RESULT chrome link', await run(`JSON.stringify({
+    linked: !$('chrome-link').hidden, source, view: stage.dataset.view, title: track && track.title,
+    paused: isPaused(), position: Math.round(position()), lines: lyrics ? lyrics.lines.length : 0,
+    meterFrom: meter.role, peak: Math.round(meter.peak * 10) / 10,
+  })`));
+  await shot('selftest-3c-chrome-link.png');
+  await run(`control('seek', 100)`);
+  await sleep(2500);
+  console.log('RESULT chrome seek', await run(`JSON.stringify({ position: Math.round(position()) })`));
+  await run(`update({ on: false })`);
+  await sleep(800);
+  console.log('RESULT chrome off ', await run(`JSON.stringify({ peak: Math.round(meter.peak * 100) / 100 })`));
+  await run(`update({ on: true }); control('toggle')`);
+  await sleep(1500);
+  console.log('RESULT chrome stop', await run(`JSON.stringify({ paused: isPaused() })`));
+  browser.destroy();
+  await sleep(1500);
+  console.log('RESULT unlinked   ', await run(`JSON.stringify({ linked: !$('chrome-link').hidden })`));
   if (process.env.SELFTEST_QUICK) return app.exit(0);
 
   // 3) A player that never puts its <audio> in the page (how Spotify does it).

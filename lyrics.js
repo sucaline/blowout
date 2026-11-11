@@ -4,7 +4,9 @@
 //   lyrics:      LRCLIB (https://lrclib.net), a free, open lyrics database with timed lines
 //   translation: Google Translate's free web endpoint. It is unofficial and may be rate
 //                limited or change; swap out translate() to use another service.
-const { ipcMain, net } = require('electron');
+const { app, ipcMain, net } = require('electron');
+const fs = require('fs');
+const path = require('path');
 
 const LRCLIB = 'https://lrclib.net/api';
 const HEADERS = { 'User-Agent': 'BLOWOUT/1.0 (desktop music player)' };
@@ -65,10 +67,11 @@ async function translate(lines, lang) {
   const out = [];
   let from = '';
   for (let start = 0; start < lines.length;) {
-    // Send a batch of lines at a time, joined by newlines so they come back line for line.
+    // A big batch of lines per request (the endpoint blocks you for a while if you ask too
+    // often), joined by newlines so they come back line for line.
     let end = start;
     let size = 0;
-    while (end < lines.length && (end === start || size + lines[end].length < 900)) size += lines[end++].length + 1;
+    while (end < lines.length && (end === start || size + lines[end].length < 1800)) size += lines[end++].length + 1;
     const batch = lines.slice(start, end);
     const q = encodeURIComponent(batch.join('\n'));
     const data = await getJson(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${lang}&dt=t&q=${q}`);
@@ -81,7 +84,24 @@ async function translate(lines, lang) {
   return { lines: out, from };
 }
 
+// Translations are kept on disk, so each song is only ever sent for translation once.
+function translationCache() {
+  const file = path.join(app.getPath('userData'), 'translations.json');
+  let saved = {};
+  try {
+    saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch { /* nothing saved yet */ }
+  return {
+    get: (key) => saved[key],
+    set(key, value) {
+      saved[key] = value;
+      fs.writeFile(file, JSON.stringify(saved), () => {});
+    },
+  };
+}
+
 module.exports = function registerLyrics(isHost) {
+  let cache = null; // opened on first use, once the app knows where its data lives
   const found = new Map();
   ipcMain.handle('lyrics:get', (event, track) => {
     if (!isHost(event)) return null;
@@ -92,5 +112,14 @@ module.exports = function registerLyrics(isHost) {
     }
     return found.get(key);
   });
-  ipcMain.handle('lyrics:translate', (event, lines, lang) => (isHost(event) ? translate(lines, lang) : null));
+  ipcMain.handle('lyrics:translate', async (event, lines, lang) => {
+    if (!isHost(event)) return null;
+    cache = cache || translationCache();
+    const key = `${lang}\n${lines.join('\n')}`;
+    const hit = cache.get(key);
+    if (hit) return hit;
+    const result = await translate(lines, lang);
+    if (result) cache.set(key, result);
+    return result;
+  });
 };

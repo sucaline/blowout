@@ -62,8 +62,9 @@ for (const b of document.querySelectorAll('[data-preset]')) {
 
 // ---------- what's on screen, and what's playing ----------
 // The stage shows one of: 'empty', 'web' (the site itself) or 'now' (the Now Playing screen).
-// `source` is where the current song comes from: a page in the web view, or a local file.
-let source = null; // 'web' | 'file'
+// `source` is where the current song comes from: the page inside the app ('web'), your real
+// Chrome through the BLOWOUT Link extension ('chrome'), or a local file.
+let source = null; // 'web' | 'chrome' | 'file'
 let track = null; // { key, title, artist, art, time, duration, paused, at }
 
 function setView(name) {
@@ -122,17 +123,35 @@ function control(action, time) {
     else if (action === 'prev') local.currentTime = 0;
     return;
   }
-  window.boost.control(action, time);
+  window.boost.control(action, time, source);
   if (action === 'seek' && track) Object.assign(track, { time, at: performance.now() });
 }
 
 const MUSIC_SITES = /^(music\.youtube\.com|open\.spotify\.com)$/;
 window.boost.onTrack((info) => {
-  if (source !== 'web') return;
+  if (info.via !== source) {
+    // Something started playing in Chrome while nothing is playing here: follow it.
+    const busyHere = source === 'file' ? !local.paused : source === 'web' && track && !track.paused;
+    if (info.via !== 'chrome' || info.paused || busyHere) return;
+    local.pause();
+    window.boost.pause('web');
+    source = 'chrome';
+    track = null;
+    setTrack({ ...info, at: performance.now() });
+    setView('now');
+    return;
+  }
   const fresh = setTrack({ ...info, at: performance.now() });
   // Picking a song on a music site jumps to Now Playing; autoplay moving on doesn't yank you.
-  if (fresh && info.clicked && MUSIC_SITES.test(info.host)) setView('now');
+  if (fresh && info.clicked && (source === 'chrome' || MUSIC_SITES.test(info.host))) setView('now');
 });
+
+// ---------- link to your real Chrome ----------
+const showLink = (linked) => { $('chrome-link').hidden = !linked; };
+window.boost.onLink(showLink);
+window.boost.linked().then(showLink);
+$('link-help').addEventListener('click', () => { $('link-steps').hidden = !$('link-steps').hidden; });
+$('link-folder').addEventListener('click', () => window.boost.showExtension());
 
 // ---------- links ----------
 function toUrl(text) {
@@ -149,6 +168,7 @@ function openLink(text) {
   const url = toUrl(text);
   if (!url) return;
   local.pause();
+  window.boost.pause('chrome');
   source = 'web';
   track = null;
   setView('web');
@@ -187,7 +207,7 @@ function openFile(file) {
   if (!file) return;
   if (objectUrl) URL.revokeObjectURL(objectUrl);
   objectUrl = URL.createObjectURL(file);
-  window.boost.pauseWeb();
+  window.boost.pause('all');
   source = 'file';
   // "Artist - Song.mp3" is the only hint a bare file gives us.
   const name = file.name.replace(/\.[^.]+$/, '');
@@ -351,14 +371,20 @@ async function loadTranslation() {
   const mine = `${track.key}\n${lang}`;
   const wanted = lyrics;
   if (!translations.has(mine)) {
-    const result = await window.boost.translate(lyrics.lines.map((line) => line.text), lang);
-    if (!result) return showStatus("Couldn't reach the translator. Try again in a bit.");
-    // Lyrics already in that language come back unchanged; don't print them twice.
-    const same = result.from && result.from.split('-')[0] === lang.split('-')[0];
-    translations.set(mine, same ? [] : result.lines);
+    // Stored as a promise so asking twice in a row sends one request, not two.
+    translations.set(mine, window.boost.translate(lyrics.lines.map((line) => line.text), lang).then((result) => {
+      if (!result) return null;
+      // Lyrics already in that language come back unchanged; don't print them twice.
+      const same = result.from && result.from.split('-')[0] === lang.split('-')[0];
+      return same ? [] : result.lines;
+    }));
   }
-  if (lyrics !== wanted || !translating) return;
-  const lines = translations.get(mine);
+  const lines = await translations.get(mine);
+  if (!lines) {
+    translations.delete(mine); // let it be tried again
+    return showStatus("The translator isn't answering (it limits how often you can ask). Try again in a few minutes.");
+  }
+  if (lyrics !== wanted || !translating || langSelect.value !== lang) return;
   if (!lines.length) showStatus(`These lyrics are already in ${langSelect.selectedOptions[0].textContent}.`);
   wanted.els.forEach((el, i) => {
     const text = lines[i] || '';

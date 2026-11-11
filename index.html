@@ -16,6 +16,7 @@
              placeholder="Paste a YouTube, YouTube Music or Spotify link, or type a song to search">
       <button type="submit" class="btn btn-hot">PLAY</button>
     </form>
+    <span id="chrome-link" class="chip" title="The BLOWOUT Link extension in your browser is connected" hidden>CHROME LINKED</span>
     <button id="now-toggle" class="btn btn-volt" hidden>NOW PLAYING</button>
     <button id="open-file" class="btn">OPEN FILE</button>
     <input id="file-input" type="file" hidden
@@ -32,6 +33,14 @@
           <button class="btn" data-url="https://music.youtube.com/">YouTube Music</button>
           <button class="btn" data-url="https://open.spotify.com/">Spotify</button>
         </div>
+        <button id="link-help" class="btn btn-small">USE MY SIGNED-IN CHROME INSTEAD</button>
+        <ol id="link-steps" class="steps" hidden>
+          <li>In Chrome, open <b>chrome://extensions</b> and switch on <b>Developer mode</b> (top right).</li>
+          <li>Click <b>Load unpacked</b> and pick the BLOWOUT Link folder.
+              <button id="link-folder" class="btn btn-small">SHOW THE FOLDER</button></li>
+          <li>Open YouTube Music in Chrome and play something. This app links by itself and takes over
+              the boost, the controls and the lyrics.</li>
+        </ol>
       </div>
 
       <webview id="view" class="pane pane-web" src="about:blank" partition="persist:blowout"></webview>

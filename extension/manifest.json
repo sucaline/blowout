@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "BLOWOUT Link",
+  "version": "1.1.0",
+  "description": "Lets the BLOWOUT app bass boost and control YouTube Music, YouTube and Spotify playing in this browser.",
+  "icons": { "48": "icon-48.png", "128": "icon-128.png" },
+  "action": { "default_title": "BLOWOUT Link", "default_popup": "popup.html" },
+  "background": { "service_worker": "sw.js" },
+  "host_permissions": [
+    "https://music.youtube.com/*",
+    "https://www.youtube.com/*",
+    "https://open.spotify.com/*",
+    "http://127.0.0.1/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://music.youtube.com/*", "https://www.youtube.com/*", "https://open.spotify.com/*"],
+      "js": ["page.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://music.youtube.com/*", "https://www.youtube.com/*", "https://open.spotify.com/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

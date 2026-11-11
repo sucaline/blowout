@@ -210,8 +210,11 @@ if (hello.role === 'guest') {
 if (hello.role === 'host') {
   contextBridge.exposeInMainWorld('boost', {
     setParams: (next) => ipcRenderer.send('boost:params', next),
-    pauseWeb: () => ipcRenderer.send('boost:pause-web'),
-    control: (action, time) => ipcRenderer.send('boost:control', { action, time }),
+    pause: (target) => ipcRenderer.send('boost:pause', target), // 'web' | 'chrome' | 'all'
+    control: (action, time, target) => ipcRenderer.send('boost:control', { action, time, target }),
+    linked: () => ipcRenderer.invoke('boost:linked'),
+    showExtension: () => ipcRenderer.send('boost:show-extension'),
+    onLink: (callback) => ipcRenderer.on('boost:link', (_event, linked) => callback(linked)),
     onMeter: (callback) => ipcRenderer.on('boost:meter', (_event, meter) => callback(meter)),
     onTrack: (callback) => ipcRenderer.on('boost:track', (_event, track) => callback(track)),
     lyrics: (track) => ipcRenderer.invoke('lyrics:get', track),

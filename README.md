@@ -51,13 +51,34 @@ that reports a song (including plain YouTube); OPEN PAGE goes back to the site.
   to Google when TRANSLATE is on. Nothing else leaves your PC.
 - Files only have their name to go on, so name them `Artist - Song.mp3` for lyrics to be found.
 
-### Signing in
+### Signing in, and using your real Chrome (BLOWOUT Link)
 
 Spotify: sign in on Spotify's own page inside the app. Your details go straight to Spotify.
 
 Google (YouTube, YouTube Music): **not possible inside the app.** Google refuses sign-ins from any
-browser embedded in an app ("This browser or app may not be secure"). YouTube and YouTube Music
-still play signed out, with ads and without your library.
+browser embedded in an app ("This browser or app may not be secure"). Signed out, they still play
+in the app, with ads and without your library.
+
+To use your signed-in account, play the music in your real Chrome and let the app run it from
+there. The **BLOWOUT Link** extension (the `extension/` folder, also bundled with the installed
+app) boosts the audio inside Chrome and connects to the app, which stays the control panel:
+sliders, presets, Now Playing, lyrics, play/pause/seek/skip.
+
+1. Open the BLOWOUT app, click **USE MY SIGNED-IN CHROME INSTEAD**, then **SHOW THE FOLDER**.
+2. In Chrome open `chrome://extensions` and switch on **Developer mode** (top right).
+3. Click **Load unpacked** and choose that BLOWOUT Link folder.
+4. Open YouTube Music (or YouTube, or Spotify) in Chrome and play something. Tabs that were
+   already open need one refresh.
+
+The app shows **CHROME LINKED** and jumps to Now Playing. Edge and other Chromium browsers work
+the same way. How it's wired:
+
+- The extension only runs on music.youtube.com, www.youtube.com and open.spotify.com.
+- It talks to the app over a connection that never leaves your PC (`127.0.0.1:38765`), and the
+  app only accepts browser extensions on it, not websites.
+- With the app closed, the extension leaves the page's audio untouched.
+- Chrome may nag about "developer mode extensions" at startup; that is the price of loading an
+  extension that isn't from the Chrome Web Store.
 
 ### Spotify
 

@@ -133,6 +133,29 @@ button { cursor: pointer; }
 
 .time { font: 13px var(--mono); color: var(--dim); min-width: 4ch; }
 
+.chip {
+  padding: 5px 10px;
+  border: 1px solid var(--volt);
+  border-radius: 999px;
+  font: 13px/1 var(--display);
+  letter-spacing: 1px;
+  color: var(--volt);
+  white-space: nowrap;
+}
+.steps {
+  max-width: 52ch;
+  margin: 0;
+  padding: 14px 18px 14px 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+}
+.steps li + li { margin-top: 8px; }
+.steps b { color: var(--volt); user-select: text; }
+.steps .btn { margin-left: 6px; vertical-align: middle; }
+
 /* ---------- Now Playing ---------- */
 /* --bass (0..1) is set every frame from the meter; the whole screen breathes with it. */
 .stage { --bass: 0; }
