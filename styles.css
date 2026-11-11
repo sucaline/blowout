@@ -14,6 +14,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html, body { height: 100%; margin: 0; }
 
@@ -105,9 +106,9 @@ button { cursor: pointer; }
 }
 .stage[data-view="empty"] .pane-empty,
 .stage[data-view="web"] .pane-web,
-.stage[data-view="file"] .pane-file { visibility: visible; pointer-events: auto; }
+.stage[data-view="now"] .pane-now { visibility: visible; pointer-events: auto; }
 
-.pane-empty, .pane-file {
+.pane-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -130,39 +131,180 @@ button { cursor: pointer; }
 .sub { margin: 0; color: var(--dim); max-width: 44ch; }
 .quick { display: flex; gap: 10px; }
 
-.eyebrow { margin: 0; font: 14px/1 var(--display); letter-spacing: 3px; color: var(--hot); }
+.time { font: 13px var(--mono); color: var(--dim); min-width: 4ch; }
 
-.file-name {
-  margin: 0;
-  max-width: 100%;
-  font: clamp(28px, 4.4vw, 60px)/1.05 var(--display);
-  letter-spacing: 1px;
-  overflow-wrap: anywhere;
+/* ---------- Now Playing ---------- */
+/* --bass (0..1) is set every frame from the meter; the whole screen breathes with it. */
+.stage { --bass: 0; }
+.pane-now { overflow: hidden; background: #000; --clean: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; }
+
+.now-bg {
+  position: absolute;
+  inset: -25%;
+  background:
+    radial-gradient(circle at 30% 30%, var(--hot), transparent 55%),
+    radial-gradient(circle at 70% 70%, var(--volt), transparent 50%),
+    #1a0500;
+  background-size: cover;
+  background-position: center;
+  filter: blur(70px) saturate(1.9);
+  scale: calc(1.05 + var(--bass) * 0.14);
+  animation: drift 48s linear infinite;
+}
+@keyframes drift { to { rotate: 360deg; } }
+.now-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(10, 10, 11, 0.5), rgba(10, 10, 11, 0.78));
+  opacity: calc(1 - var(--bass) * 0.25);
 }
 
-.transport {
+.now-main {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(230px, 320px) minmax(0, 1fr);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: center;
+  padding: 28px clamp(24px, 4vw, 48px);
+}
+
+.now-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 18px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #2a2a30, #121214);
+  scale: calc(1 + var(--bass) * 0.04);
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.6),
+    0 0 calc(var(--bass) * 110px) rgba(255, 61, 31, calc(var(--bass) * 0.85));
+}
+.stage.clipping .art { outline: 3px solid var(--volt); outline-offset: 3px; }
+.art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.art-blank {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: min(680px, 100%);
-  margin-top: 10px;
+  justify-content: center;
+  font-size: 96px;
+  color: var(--hot);
 }
-.transport input { flex: 1; }
+.art img:not([hidden]) + .art-blank { display: none; }
 
-.play-btn {
-  width: 56px;
-  height: 56px;
-  flex: none;
+.now-title {
+  margin: 6px 0 0;
+  font: 800 26px/1.15 var(--clean);
+  color: #fff;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.now-artist { margin: 0; font: 500 16px/1.3 var(--clean); color: rgba(255, 255, 255, 0.7); }
+
+.now-seek { display: flex; align-items: center; gap: 10px; }
+.now-seek input { flex: 1; min-width: 0; }
+.now-seek .time { color: rgba(255, 255, 255, 0.7); }
+
+.now-buttons { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.round {
+  width: 46px;
+  height: 46px;
+  padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--hot);
-  color: var(--hot-ink);
-  font-size: 22px;
-  line-height: 1;
+  background: rgba(255, 255, 255, 0.14);
+  font: 18px/1 "Segoe UI Symbol", var(--body);
 }
-.play-btn:hover { background: var(--volt); }
+.round:hover { background: rgba(255, 255, 255, 0.26); }
+.round:disabled { opacity: 0.3; cursor: default; }
+.round-big { width: 62px; height: 62px; background: #fff; color: #0a0a0b; font-size: 22px; }
+.round-big:hover { background: var(--volt); }
 
-.time { font: 13px var(--mono); color: var(--dim); min-width: 4ch; }
+.now-tools, .now-sync { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.now-sync output { font: 13px var(--mono); color: var(--volt); min-width: 5ch; text-align: center; }
+.now-sync .label { color: rgba(255, 255, 255, 0.6); }
+.pane-now .btn { background: rgba(255, 255, 255, 0.12); border-color: transparent; }
+.pane-now .btn[aria-pressed="true"] { background: var(--volt); color: #171300; }
+.select {
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  font: 13px var(--body);
+}
+.select option { background: var(--raised); }
+.btn-volt { background: var(--volt); border-color: var(--volt); color: #171300; }
+
+.lyrics {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 42vh 12px 42vh 4px;
+  -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 74%, transparent);
+  mask-image: linear-gradient(transparent, #000 22%, #000 74%, transparent);
+}
+.line {
+  margin: 0 0 22px;
+  font: 800 clamp(24px, 3vw, 36px)/1.18 var(--clean);
+  color: rgba(255, 255, 255, 0.34);
+  filter: blur(1.3px);
+  transform-origin: left center;
+  transition: color 0.25s, filter 0.25s, scale 0.25s;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.line span { display: block; }
+.line.past { color: rgba(255, 255, 255, 0.2); }
+.line:hover { color: rgba(255, 255, 255, 0.75); filter: none; }
+.line.active {
+  color: #fff;
+  filter: none;
+  scale: 1.04;
+  text-shadow: 0 0 calc(10px + var(--bass) * 44px) rgba(255, 214, 0, calc(0.2 + var(--bass) * 0.7));
+}
+/* Clipping tears the active line apart a little. */
+.stage.clipping .line.active {
+  text-shadow:
+    3px 0 0 rgba(255, 61, 31, 0.9),
+    -3px 0 0 rgba(0, 224, 255, 0.75),
+    0 0 calc(14px + var(--bass) * 44px) rgba(255, 214, 0, 0.8);
+}
+.line-tr {
+  margin-top: 5px;
+  font: 600 0.5em/1.3 var(--clean);
+  color: var(--volt);
+  text-shadow: none;
+}
+.lyrics:not(.translated) .line-tr, .line-tr:empty { display: none; }
+.lyrics.untimed .line {
+  margin-bottom: 8px;
+  font-size: clamp(18px, 2vw, 24px);
+  color: rgba(255, 255, 255, 0.88);
+  filter: none;
+  cursor: default;
+}
+.lyrics.untimed { padding-block: 18vh; }
+.lyrics-note {
+  margin: 0;
+  font: 800 28px/1.2 var(--clean);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .now-bg { animation: none; scale: 1.05; }
+  .art { scale: 1; }
+  .lyrics { scroll-behavior: auto; }
+}
 
 .drop-hint {
   position: absolute;

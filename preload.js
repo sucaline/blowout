@@ -140,6 +140,8 @@ if (hello.role === 'guest') {
   contextBridge.exposeInMainWorld('__blowoutHook', (el) => {
     if (el instanceof HTMLMediaElement) hook(el);
   });
+  // The page also tells the browser how to skip/seek (its media-key handlers). Keeping a
+  // copy lets the Now Playing screen press the page's own next/previous/seek.
   webFrame.executeJavaScript(`(() => {
     const hook = window.__blowoutHook;
     const play = HTMLMediaElement.prototype.play;
@@ -147,13 +149,72 @@ if (hello.role === 'guest') {
       try { hook(this); } catch {}
       return play.apply(this, arguments);
     };
+    const handlers = {};
+    const setHandler = MediaSession.prototype.setActionHandler;
+    MediaSession.prototype.setActionHandler = function (action, handler) {
+      handlers[action] = handler;
+      return setHandler.apply(this, arguments);
+    };
+    window.__blowoutAct = (action, seekTime) => {
+      if (!handlers[action]) return false;
+      handlers[action]({ action, seekTime });
+      return true;
+    };
   })()`);
+  const act = (action, seekTime) =>
+    webFrame.executeJavaScript(`window.__blowoutAct(${JSON.stringify(action)}, ${Number(seekTime) || 0})`).catch(() => false);
+
+  // The song the page says it's playing, for the Now Playing screen.
+  const playing = () => {
+    let fallback = null;
+    for (const el of hooked) {
+      if (!el.paused && !el.ended) return el;
+      if (el.currentTime > 0) fallback = el;
+    }
+    return fallback;
+  };
+  let clickedAt = 0;
+  window.addEventListener('pointerdown', () => { clickedAt = Date.now(); }, true);
+  setInterval(() => {
+    const info = navigator.mediaSession && navigator.mediaSession.metadata;
+    if (!info || !info.title) return;
+    const el = playing();
+    const art = info.artwork && info.artwork.length ? info.artwork[info.artwork.length - 1].src : '';
+    ipcRenderer.send('boost:track', {
+      title: info.title,
+      artist: info.artist || '',
+      album: info.album || '',
+      art,
+      time: el ? el.currentTime : 0,
+      duration: el && Number.isFinite(el.duration) ? el.duration : 0,
+      paused: !el || el.paused,
+      host: location.host,
+      clicked: Date.now() - clickedAt < 5000, // you just picked something, vs. autoplay moving on
+    });
+  }, 250);
+
+  ipcRenderer.on('boost:control', async (_event, { action, time }) => {
+    const el = playing();
+    if (action === 'next') act('nexttrack');
+    else if (action === 'prev') act('previoustrack');
+    else if (action === 'seek') {
+      if (!(await act('seekto', time)) && el) el.currentTime = time;
+    } else if (action === 'toggle' && el) {
+      if (await act(el.paused ? 'play' : 'pause')) return;
+      if (el.paused) el.play().catch(() => {});
+      else el.pause();
+    }
+  });
 }
 
 if (hello.role === 'host') {
   contextBridge.exposeInMainWorld('boost', {
     setParams: (next) => ipcRenderer.send('boost:params', next),
     pauseWeb: () => ipcRenderer.send('boost:pause-web'),
+    control: (action, time) => ipcRenderer.send('boost:control', { action, time }),
     onMeter: (callback) => ipcRenderer.on('boost:meter', (_event, meter) => callback(meter)),
+    onTrack: (callback) => ipcRenderer.on('boost:track', (_event, track) => callback(track)),
+    lyrics: (track) => ipcRenderer.invoke('lyrics:get', track),
+    translate: (lines, lang) => ipcRenderer.invoke('lyrics:translate', lines, lang),
   });
 }

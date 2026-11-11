@@ -13,17 +13,11 @@ if (SELFTEST) app.setPath('userData', path.join(app.getPath('temp'), 'blowout-se
 // Let pages (and our audio graph) start sound without waiting for a click.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // Look like plain Chrome so sites serve their normal player.
-const CHROME_UA = app.userAgentFallback
+app.userAgentFallback = app.userAgentFallback
   .replace(/\sElectron\/\S+/, '')
   .replace(new RegExp(`\\s${app.getName()}\\/\\S+`, 'i'), '');
-app.userAgentFallback = CHROME_UA;
-
-// Google turns away sign-ins from browsers embedded in apps ("this browser or app may not
-// be secure") but accepts Firefox, so its sign-in pages alone are shown a Firefox identity.
-// You still type your own details straight into Google's real page; the app never sees them.
-const FIREFOX_OS = { win32: 'Windows NT 10.0; Win64; x64', darwin: 'Macintosh; Intel Mac OS X 10.15' };
-const FIREFOX_UA = `Mozilla/5.0 (${FIREFOX_OS[process.platform] || 'X11; Linux x86_64'}; rv:150.0) Gecko/20100101 Firefox/150.0`;
-const GOOGLE_SIGN_IN = 'https://accounts.google.com/';
+// Note: Google refuses account sign-in from any browser embedded in an app, this one included.
+// YouTube and YouTube Music still play signed out.
 
 let win = null;
 let params = null; // latest settings from the UI; handed to every page as it loads
@@ -66,18 +60,7 @@ app.on('web-contents-created', (_event, wc) => {
     if (isWeb(url)) wc.loadURL(url);
     return { action: 'deny' };
   });
-  const matchUserAgent = (url) => {
-    const ua = url.startsWith(GOOGLE_SIGN_IN) ? FIREFOX_UA : CHROME_UA;
-    if (wc.getUserAgent() !== ua) wc.setUserAgent(ua);
-  };
-  wc.on('will-navigate', (event) => {
-    if (!isWeb(event.url)) event.preventDefault();
-    else if (event.isMainFrame) matchUserAgent(event.url);
-  });
-  wc.on('will-redirect', (event) => { if (event.isMainFrame) matchUserAgent(event.url); });
-  wc.on('did-start-navigation', (event) => {
-    if (event.isMainFrame && !event.isSameDocument) matchUserAgent(event.url);
-  });
+  wc.on('will-navigate', (event) => { if (!isWeb(event.url)) event.preventDefault(); });
 });
 
 // Fetch/enable Widevine before any page loads. The first launch downloads it from Google.
@@ -110,6 +93,19 @@ ipcMain.on('boost:pause-web', (event) => {
   }
 });
 
+ipcMain.on('boost:track', (event, track) => {
+  if (win && !isHost(event)) win.webContents.send('boost:track', track);
+});
+
+ipcMain.on('boost:control', (event, command) => {
+  if (!isHost(event)) return;
+  for (const wc of webContents.getAllWebContents()) {
+    if (wc.getType() === 'webview') wc.send('boost:control', command);
+  }
+});
+
+require('./lyrics')(isHost);
+
 ipcMain.on('boost:meter', (event, meter) => {
   if (!win) return;
   win.webContents.send('boost:meter', { ...meter, role: isHost(event) ? 'host' : 'guest' });
@@ -120,14 +116,6 @@ app.whenReady().then(async () => {
   // Sites inside the app get fullscreen and DRM playback, nothing else (no mic, location…).
   web.setPermissionRequestHandler((_wc, permission, done) => {
     done(permission === 'fullscreen' || permission === 'protected-media-identifier');
-  });
-  web.webRequest.onBeforeSendHeaders({ urls: [`${GOOGLE_SIGN_IN}*`] }, (details, done) => {
-    const headers = details.requestHeaders;
-    for (const name of Object.keys(headers)) {
-      if (/^sec-ch-ua/i.test(name)) delete headers[name]; // Firefox doesn't send these
-    }
-    headers['User-Agent'] = FIREFOX_UA;
-    done({ requestHeaders: headers });
   });
   await loadWidevine();
   createWindow();

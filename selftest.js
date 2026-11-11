@@ -75,6 +75,27 @@ module.exports = async function selftest(win) {
   console.log('RESULT youtube    ', JSON.stringify(seen.guest));
   console.log('RESULT view       ', await run(`JSON.stringify({ view: stage.dataset.view, url: view.getURL() })`));
 
+  // 2b) Now Playing: the page's song info reaches us, lyrics load, translate, and follow along.
+  await open(process.env.SELFTEST_SONG || 'https://music.youtube.com/watch?v=dQw4w9WgXcQ', 14000);
+  await run(`setView('now'); langSelect.value = 'es'; if (!translating) $('translate').click(); langSelect.dispatchEvent(new Event('change'));`);
+  await sleep(6000);
+  console.log('RESULT now playing', await run(`JSON.stringify({
+    title: track && track.title, artist: track && track.artist, art: Boolean(track && track.art),
+    duration: Math.round(duration()), position: Math.round(position()), paused: isPaused(),
+    lines: lyrics ? lyrics.lines.length : 0, timed: Boolean(lyrics && lyrics.timed), active,
+    translated: lyrics ? lyrics.els.filter((el) => el.lastChild.textContent).length : 0,
+    note: lyrics ? '' : box.textContent,
+  })`));
+  await shot('selftest-3b-now-playing.png');
+  const before = await run(`position()`);
+  await run(`control('seek', 60)`);
+  await sleep(2500);
+  console.log('RESULT seek       ', JSON.stringify({ before: Math.round(before), after: Math.round(await run(`position()`)) }));
+  await run(`control('toggle')`);
+  await sleep(1500);
+  console.log('RESULT pause      ', await run(`JSON.stringify({ paused: isPaused() })`));
+  if (process.env.SELFTEST_QUICK) return app.exit(0);
+
   // 3) A player that never puts its <audio> in the page (how Spotify does it).
   await open('https://example.com/', 3000);
   await guest(`(() => {
@@ -93,10 +114,7 @@ module.exports = async function selftest(win) {
   await sleep(2000);
   console.log('RESULT detached   ', JSON.stringify(seen.guest));
 
-  // 4) Google's sign-in page gets the Firefox identity; everything else stays Chrome.
-  await open('https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F', 7000);
-  console.log('RESULT google     ', await guest(identity));
-  await shot('selftest-4-google.png');
+  // 4) YouTube Music loads as a normal Chrome-like browser.
   await open('https://music.youtube.com/', 8000);
   console.log('RESULT ytmusic    ', await guest(identity));
   await shot('selftest-5-ytmusic.png');

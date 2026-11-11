@@ -26,8 +26,8 @@ npm start
 
 `npm run build` makes a double-click `BLOWOUT.exe` in `dist/BLOWOUT-win32-x64`.
 
-`npm run installer` makes `dist/installer/BLOWOUT-Setup-1.0.0.exe`, a one-click installer that puts
-BLOWOUT in the Start menu and on the desktop, with an uninstaller. It is not code-signed, so
+`npm run installer` makes `dist/installer/BLOWOUT-Setup-<version>.exe`, a one-click installer that
+puts BLOWOUT in the Start menu and on the desktop, with an uninstaller. It is not code-signed, so
 Windows SmartScreen will warn the first time it runs (More info, then Run anyway).
 
 - **Links:** the address bar takes a link, a `spotify:` URI, or plain words (searches YouTube).
@@ -35,12 +35,29 @@ Windows SmartScreen will warn the first time it runs (More info, then Run anyway
 - **Controls:** BASS and LOUD go to +40 dB each, three clip styles, four presets.
 - **Output volume** comes after the clipper, so you can keep the crunch and turn the level down.
 
+### Now Playing and lyrics
+
+Pick a song on YouTube Music or Spotify, or open a file, and the app switches to a Now Playing
+screen: artwork, transport, and timed lyrics that follow the song. Everything on it moves with the
+bass and glitches when the signal clips. NOW PLAYING in the top bar brings it up for any page
+that reports a song (including plain YouTube); OPEN PAGE goes back to the site.
+
+- **Lyrics** come from [LRCLIB](https://lrclib.net), a free open lyrics database. Click a line to
+  jump there. LYRICS TIMING nudges them when a video has an intro the album version doesn't.
+- **TRANSLATE** shows a translation under each line, using Google Translate's free web endpoint.
+  That endpoint is unofficial and may be rate limited or stop working; `translate()` in
+  `lyrics.js` is the one place to swap in another service.
+- **Privacy:** to do this the app sends the song's title and artist to LRCLIB, and the lyric lines
+  to Google when TRANSLATE is on. Nothing else leaves your PC.
+- Files only have their name to go on, so name them `Artist - Song.mp3` for lyrics to be found.
+
 ### Signing in
 
-Sign in on the site's own page inside the app (YouTube Music, Spotify). Your details go straight
-to that site; BLOWOUT never sees them. Google blocks sign-ins from browsers embedded in apps, so
-Google's sign-in pages (and only those) are shown a Firefox identity. Google can change that
-check at any time.
+Spotify: sign in on Spotify's own page inside the app. Your details go straight to Spotify.
+
+Google (YouTube, YouTube Music): **not possible inside the app.** Google refuses sign-ins from any
+browser embedded in an app ("This browser or app may not be secure"). YouTube and YouTube Music
+still play signed out, with ads and without your library.
 
 ### Spotify
 
