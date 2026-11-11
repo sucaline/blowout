@@ -41,6 +41,23 @@ Windows SmartScreen will warn the first time it runs (More info, then Run anyway
 - **Files:** OPEN FILE or drag one in (.mp3, .wav, .flac, .ogg, .m4a).
 - **Controls:** BASS and LOUD go to +40 dB each, three clip styles, four presets.
 - **Output volume** comes after the clipper, so you can keep the crunch and turn the level down.
+- **Settings** (the gear in the top bar): pick a look (BLOWOUT, STAR RAIL or MATERIAL 3, which builds
+  its colors from an accent you choose), calm mode (no pulsing or glitching), auto-open Now Playing,
+  keep on top, start with Windows, turn lyrics lookup off, the translation language, and Discord.
+
+### Discord status
+
+Settings, then Discord: turn on **Show what I am playing** and your Discord profile shows
+"Listening to BLOWOUT" with the song, artist, cover and a running timer (it also follows pausing and
+seeking). Discord only shows this for an application you own, so once:
+
+1. Go to [discord.com/developers/applications](https://discord.com/developers/applications),
+   click **New Application** and name it **BLOWOUT** (that is the name people see).
+2. Copy its **Application ID** and paste it into the Application ID box in Settings.
+
+The desktop Discord app has to be running; BLOWOUT talks to it over a local pipe on your PC and
+nothing else leaves it. Discord must also have "Display current activity as a status message" on
+(Discord settings, Activity Privacy).
 
 ### Now Playing and lyrics
 
@@ -56,6 +73,8 @@ that reports a song (including plain YouTube); OPEN PAGE goes back to the site.
   `lyrics.js` is the one place to swap in another service.
 - **Privacy:** to do this the app sends the song's title and artist to LRCLIB, and the lyric lines
   to Google when TRANSLATE is on. Nothing else leaves your PC.
+- If LRCLIB has nothing, lookups fall back to a looser LRCLIB search, then NetEase Cloud Music (timed
+  lyrics), then lyrics.ovh (plain text, no timing). Turn lookups off in Settings to send nothing.
 - Files only have their name to go on, so name them `Artist - Song.mp3` for lyrics to be found.
 
 ### Signing in, and using your real Chrome (BLOWOUT Link)

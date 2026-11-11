@@ -1,5 +1,13 @@
 const $ = (id) => document.getElementById(id);
 
+// ---------- settings (kept in this window's storage) ----------
+const OPT_DEFAULTS = { autonow: true, lyrics: true, calm: false, top: false, login: false };
+const opt = (name) => {
+  const saved = localStorage.getItem('opt-' + name);
+  return saved === null ? OPT_DEFAULTS[name] : saved === 'on';
+};
+const setOpt = (name, on) => localStorage.setItem('opt-' + name, on ? 'on' : 'off');
+
 const stage = $('stage');
 const view = $('view');
 const local = $('local');
@@ -67,7 +75,13 @@ for (const b of document.querySelectorAll('[data-preset]')) {
 let source = null; // 'web' | 'chrome' | 'file'
 let track = null; // { key, title, artist, art, time, duration, paused, at }
 
-function setView(name) {
+let viewBefore = 'empty';
+function setView(name, leaving) {
+  // While Settings is open, pages changing songs don't pull you out of it.
+  if (stage.dataset.view === 'settings' && name !== 'settings' && !leaving) {
+    viewBefore = name;
+    return;
+  }
   stage.dataset.view = name;
   $('now-toggle').hidden = !track || name === 'now';
 }
@@ -138,12 +152,12 @@ window.boost.onTrack((info) => {
     source = 'chrome';
     track = null;
     setTrack({ ...info, at: performance.now() });
-    setView('now');
+    if (opt('autonow')) setView('now');
     return;
   }
   const fresh = setTrack({ ...info, at: performance.now() });
   // Picking a song on a music site jumps to Now Playing; autoplay moving on doesn't yank you.
-  if (fresh && info.clicked && (source === 'chrome' || MUSIC_SITES.test(info.host))) setView('now');
+  if (fresh && info.clicked && (source === 'chrome' || MUSIC_SITES.test(info.host)) && opt('autonow')) setView('now');
 });
 
 // ---------- link to your real Chrome ----------
@@ -296,6 +310,7 @@ function lyricsNote(text) {
 
 async function loadLyrics() {
   const mine = track.key;
+  if (!opt('lyrics')) return lyricsNote('Lyrics are turned off in Settings.');
   lyricsNote('Looking for lyrics…');
   // A page names the song before it knows how long it is; the length helps find the right lyrics.
   await new Promise((resolve) => setTimeout(resolve, 900));
@@ -404,6 +419,19 @@ langSelect.addEventListener('change', () => {
 });
 
 // ---------- meter + per-frame updates ----------
+// ---------- look (theme) ----------
+let barColors = { hot: '#ff3d1f', mid: '#ff9a1f', low: '#ffd600' };
+function applyLook(name) {
+  if (name !== 'starrail' && name !== 'material') name = 'blowout';
+  document.body.dataset.theme = name;
+  localStorage.setItem('look', name);
+  for (const b of document.querySelectorAll('#look button')) b.classList.toggle('active', b.dataset.theme === name);
+  const css = getComputedStyle(document.body);
+  barColors = { hot: css.getPropertyValue('--hot').trim(), mid: css.getPropertyValue('--mid').trim(), low: css.getPropertyValue('--volt').trim() };
+}
+for (const b of document.querySelectorAll('#look button')) b.addEventListener('click', () => applyLook(b.dataset.theme));
+applyLook(localStorage.getItem('look'));
+
 const canvas = $('bars');
 const g = canvas.getContext('2d');
 let meter = { bars: [], peak: 0 };
@@ -442,8 +470,9 @@ function drawNowPlaying(clipping) {
   // Everything on this screen breathes with the low end and glitches when it clips.
   const low = meter.bars.length ? meter.bars.slice(0, 8).reduce((a, b) => a + b, 0) / (8 * 255) : 0;
   bass += (low - bass) * (low > bass ? 0.5 : 0.12);
-  stage.style.setProperty('--bass', bass.toFixed(3));
-  stage.classList.toggle('clipping', clipping);
+  const calm = opt('calm');
+  stage.style.setProperty('--bass', calm ? '0' : bass.toFixed(3));
+  stage.classList.toggle('clipping', clipping && !calm);
 }
 
 function draw() {
@@ -464,7 +493,7 @@ function draw() {
     for (let i = 0; i < n; i++) {
       const level = meter.bars[i] / 255;
       const bh = Math.max(dpr, level * h);
-      g.fillStyle = level > 0.9 ? '#ff3d1f' : level > 0.7 ? '#ff9a1f' : '#ffd600';
+      g.fillStyle = level > 0.9 ? barColors.hot : level > 0.7 ? barColors.mid : barColors.low;
       g.fillRect(i * (bw + gap), h - bh, bw, bh);
     }
   }
@@ -480,3 +509,132 @@ renderTranslate();
 renderLag();
 window.boost.setParams(params);
 requestAnimationFrame(draw);
+
+// ---------- Discord Rich Presence ----------
+const discordOn = () => localStorage.getItem('discord') === 'on';
+const discordNotes = {
+  off: 'Show what you are playing on your Discord profile.',
+  connecting: 'Connecting to Discord...',
+  on: 'Showing on your Discord profile.',
+  'no-discord': 'Waiting for the Discord app. Open it and this will connect by itself.',
+  'bad-id': 'Paste your Discord application ID below first.',
+};
+function renderDiscord(state) {
+  const on = discordOn();
+  $('discord-toggle').setAttribute('aria-checked', on);
+  $('discord-note').textContent = discordNotes[on ? state : 'off'] || discordNotes.off;
+  if (on && state === 'bad-id') $('discord-setup').open = true;
+}
+function sendDiscordConfig() {
+  window.boost.discordConfig({ enabled: discordOn(), clientId: $('discord-id').value.trim() });
+}
+$('discord-id').value = localStorage.getItem('discordId') || '';
+$('discord-toggle').addEventListener('click', () => {
+  localStorage.setItem('discord', discordOn() ? 'off' : 'on');
+  sendDiscordConfig();
+  renderDiscord(discordOn() ? 'connecting' : 'off');
+  sentPresence = null;
+});
+$('discord-id').addEventListener('change', () => {
+  localStorage.setItem('discordId', $('discord-id').value.trim());
+  sendDiscordConfig();
+});
+window.boost.onDiscordState(renderDiscord);
+sendDiscordConfig();
+renderDiscord('off');
+window.boost.discordState().then(renderDiscord);
+
+// Tell Discord about the song, but only when something changed (a new song, pause/play, or a
+// seek), because it's rate limited and its timer runs by itself in between.
+let sentPresence = null;
+setInterval(() => {
+  if (!discordOn()) return;
+  const playing = track && (source === 'file' ? Boolean(local.src) : true);
+  const now = Date.now();
+  const next = playing
+    ? { key: track.key, paused: isPaused(), start: now - position() * 1000 }
+    : null;
+  const same = (!next && !sentPresence) || (next && sentPresence && next.key === sentPresence.key
+    && next.paused === sentPresence.paused && Math.abs(next.start - sentPresence.start) < 2500);
+  if (same) return;
+  sentPresence = next;
+  window.boost.discordPresence(next && {
+    title: track.title, artist: track.artist, art: track.art, paused: next.paused,
+    position: position(), duration: duration() || 0,
+  });
+}, 1000);
+
+// ---------- Settings page ----------
+function applyAccent(hex) {
+  // Material 3 colors, worked out from one hue (a simple stand-in for Google's tonal palettes).
+  const n = parseInt(hex.slice(1), 16);
+  const [R, G, B] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+  const max = Math.max(R, G, B);
+  const d = max - Math.min(R, G, B);
+  let h = 0;
+  if (d) h = max === R ? ((G - B) / d) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
+  h = Math.round((h * 60 + 360) % 360);
+  const hsl = (hue, s, l) => `hsl(${(hue + 360) % 360} ${s}% ${l}%)`;
+  const vars = {
+    '--m-primary': hsl(h, 85, 82), '--m-on-primary': hsl(h, 60, 20), '--m-primary-container': hsl(h, 45, 32),
+    '--m-on-primary-container': hsl(h, 90, 90), '--m-secondary-container': hsl(h, 18, 28),
+    '--m-on-secondary-container': hsl(h, 30, 90), '--m-tertiary': hsl(h + 55, 60, 80),
+    '--m-surface': hsl(h, 12, 8), '--m-surface-1': hsl(h, 10, 12), '--m-surface-2': hsl(h, 9, 16),
+    '--m-surface-3': hsl(h, 8, 20), '--m-on-surface': hsl(h, 15, 90), '--m-on-surface-variant': hsl(h, 10, 75),
+    '--m-outline': hsl(h, 6, 58), '--m-outline-variant': hsl(h, 8, 28),
+  };
+  for (const [k, v] of Object.entries(vars)) document.body.style.setProperty(k, v);
+  localStorage.setItem('accent', hex);
+  $('accent').value = hex;
+  applyLook(document.body.dataset.theme); // the meter reads its colors from the theme
+}
+
+// a switch row: shows the saved value, saves and reports changes
+function bindSwitch(id, get, set) {
+  const el = $(id);
+  const show = () => el.setAttribute('aria-checked', get());
+  el.addEventListener('click', () => { set(!get()); show(); });
+  show();
+}
+const flip = (name, after) => [() => opt(name), (on) => { setOpt(name, on); if (after) after(on); }];
+const calmBody = () => document.body.classList.toggle('calm', opt('calm'));
+const hostFlags = () => window.boost.appSettings({ alwaysOnTop: opt('top'), openAtLogin: opt('login') });
+
+bindSwitch('set-calm', ...flip('calm', calmBody));
+bindSwitch('set-autonow', ...flip('autonow'));
+bindSwitch('set-lyrics', ...flip('lyrics', () => { if (track) loadLyrics(); }));
+bindSwitch('set-top', ...flip('top', hostFlags));
+bindSwitch('set-login', ...flip('login', hostFlags));
+calmBody();
+if (opt('top')) hostFlags();
+
+$('accent').addEventListener('input', () => applyAccent($('accent').value));
+applyAccent(localStorage.getItem('accent') || '#6750a4');
+
+// the language list is the one on Now Playing; this is a second handle on it
+for (const o of langSelect.options) $('set-lang').add(new Option(o.textContent, o.value));
+$('set-lang').value = langSelect.value;
+$('set-lang').addEventListener('change', () => {
+  langSelect.value = $('set-lang').value;
+  langSelect.dispatchEvent(new Event('change'));
+});
+langSelect.addEventListener('change', () => { $('set-lang').value = langSelect.value; });
+
+function toggleSettings() {
+  if (stage.dataset.view === 'settings') return setView(viewBefore, true);
+  viewBefore = stage.dataset.view;
+  setView('settings');
+}
+$('settings-btn').addEventListener('click', toggleSettings);
+$('settings-done').addEventListener('click', toggleSettings);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && stage.dataset.view === 'settings') toggleSettings();
+});
+
+$('set-reset').addEventListener('click', () => {
+  if (!confirm('Reset every setting, including boost levels?')) return;
+  for (const k of Object.keys(localStorage)) localStorage.removeItem(k);
+  window.boost.appSettings({ alwaysOnTop: false, openAtLogin: false });
+  window.boost.discordConfig({ enabled: false, clientId: '' });
+  location.reload();
+});

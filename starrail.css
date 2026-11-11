@@ -1,0 +1,172 @@
+/* ---------- STAR RAIL look ----------
+   A calmer, starlit skin: deep indigo, pale gold trim, chamfered corners, diamond ornaments.
+   Picked in the LOOK box on the side panel; everything else works the same. All of it hangs off
+   body[data-theme="starrail"], so the default BLOWOUT look is untouched. */
+body[data-theme="starrail"] {
+  --bg: #0b0d1f;
+  --panel: #10132b;
+  --raised: #1a1e40;
+  --line: #3a3f6e;
+  --text: #eef0ff;
+  --dim: #8b90b8;
+  --hot: #ff6b9a;
+  --hot-ink: #2a0614;
+  --volt: #e9cc8e;
+  --gold: #f6e3b4;
+  --mid: #f3a6c8;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+  --cut: 10px;
+  background:
+    radial-gradient(1.2px 1.2px at 12% 18%, rgba(255, 255, 255, 0.7), transparent 60%),
+    radial-gradient(1px 1px at 34% 72%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1.4px 1.4px at 58% 30%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1px 1px at 81% 64%, rgba(255, 255, 255, 0.45), transparent 60%),
+    radial-gradient(1.2px 1.2px at 92% 12%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(900px 500px at 85% -10%, rgba(120, 90, 220, 0.28), transparent 70%),
+    radial-gradient(700px 500px at 0% 110%, rgba(60, 120, 220, 0.22), transparent 70%),
+    var(--bg);
+}
+body[data-theme="starrail"] :focus-visible { outline-color: var(--gold); }
+
+/* top bar: hairline gold underline with a diamond in the middle of it */
+body[data-theme="starrail"] .topbar {
+  position: relative;
+  background: linear-gradient(180deg, rgba(26, 30, 64, 0.85), rgba(16, 19, 43, 0.85));
+  border-bottom: 1px solid rgba(233, 204, 142, 0.35);
+}
+body[data-theme="starrail"] .topbar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 9px;
+  height: 9px;
+  background: var(--volt);
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: 0 0 10px rgba(233, 204, 142, 0.7);
+  z-index: 2;
+}
+body[data-theme="starrail"] .logo {
+  transform: none;
+  font-weight: 300;
+  letter-spacing: 7px;
+  font-size: 20px;
+  color: var(--gold);
+  text-shadow: 0 0 14px rgba(233, 204, 142, 0.45);
+}
+body[data-theme="starrail"] .logo span { color: #fff; font-weight: 700; }
+
+/* buttons and fields: chamfered corners */
+body[data-theme="starrail"] .btn,
+body[data-theme="starrail"] .power,
+body[data-theme="starrail"] .address input,
+body[data-theme="starrail"] .text-input,
+body[data-theme="starrail"] .icon-btn,
+body[data-theme="starrail"] .select {
+  border-radius: 0;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+}
+body[data-theme="starrail"] .btn-small { --cut: 7px; }
+body[data-theme="starrail"] .btn {
+  font: 600 12px/1 var(--display);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #232853, #181c3d);
+  border-color: rgba(233, 204, 142, 0.3);
+}
+body[data-theme="starrail"] .btn:hover { border-color: var(--gold); background: linear-gradient(180deg, #2c3266, #1d2248); }
+body[data-theme="starrail"] .btn-volt,
+body[data-theme="starrail"] .btn[aria-pressed="true"] {
+  background: linear-gradient(180deg, #f6e3b4, #e0bd77);
+  border-color: var(--gold);
+  color: #2b2210;
+}
+body[data-theme="starrail"] .btn-hot {
+  background: linear-gradient(180deg, #ff8fb2, #f0558a);
+  border-color: #ffc2d6;
+  color: #2a0614;
+}
+body[data-theme="starrail"] .address input { background: rgba(8, 10, 28, 0.8); }
+body[data-theme="starrail"] .address input:focus { border-color: var(--gold); }
+
+/* stage */
+body[data-theme="starrail"] .stage { background: transparent; }
+body[data-theme="starrail"] .pane-empty {
+  background: radial-gradient(500px 360px at 50% 45%, rgba(130, 100, 230, 0.22), transparent 70%);
+}
+body[data-theme="starrail"] .big {
+  transform: none;
+  font-weight: 200;
+  letter-spacing: 14px;
+  font-size: clamp(34px, 6vw, 76px);
+  color: var(--gold);
+  text-shadow: 0 0 30px rgba(233, 204, 142, 0.45), 0 0 80px rgba(130, 100, 230, 0.5);
+}
+body[data-theme="starrail"] .chip { border-color: var(--gold); color: var(--gold); font-family: var(--display); letter-spacing: 2px; }
+
+/* side panel */
+body[data-theme="starrail"] .panel {
+  background: linear-gradient(180deg, rgba(18, 21, 48, 0.92), rgba(11, 13, 31, 0.92));
+  border-left: 1px solid rgba(233, 204, 142, 0.3);
+}
+body[data-theme="starrail"] .meter {
+  background: rgba(5, 6, 20, 0.85);
+  border-radius: 0;
+  border-color: rgba(233, 204, 142, 0.3);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+body[data-theme="starrail"] .power { font: 700 15px/1 var(--display); letter-spacing: 5px; --cut: 14px; }
+body[data-theme="starrail"] .power[aria-pressed="true"] {
+  background: linear-gradient(180deg, #f6e3b4, #dcb669);
+  color: #2b2210;
+}
+body[data-theme="starrail"] .label { font-family: var(--display); font-weight: 600; letter-spacing: 3px; color: var(--gold); }
+body[data-theme="starrail"] .label { justify-content: flex-start; }
+body[data-theme="starrail"] .label output { margin-left: auto; }
+body[data-theme="starrail"] .label::before { content: "\25C6\00a0"; color: var(--volt); font-size: 8px; vertical-align: middle; }
+body[data-theme="starrail"] .label output::before { content: none; }
+body[data-theme="starrail"] input[type="range"] { accent-color: var(--volt); }
+body[data-theme="starrail"] .segmented { border-radius: 0; border-color: rgba(233, 204, 142, 0.3); }
+body[data-theme="starrail"] .segmented button.active { background: linear-gradient(180deg, #f6e3b4, #dcb669); color: #2b2210; }
+
+/* Now Playing */
+body[data-theme="starrail"] .pane-now { background: #070918; }
+body[data-theme="starrail"] .now-shade {
+  background:
+    radial-gradient(900px 600px at 20% 10%, rgba(100, 80, 220, 0.25), transparent 70%),
+    linear-gradient(180deg, rgba(7, 9, 24, 0.55), rgba(7, 9, 24, 0.92));
+}
+body[data-theme="starrail"] .art {
+  border-radius: 0;
+  outline: 1px solid rgba(233, 204, 142, 0.7);
+  outline-offset: 7px;
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.65),
+    0 0 calc(var(--bass) * 120px) rgba(140, 120, 255, calc(var(--bass) * 0.85));
+}
+body[data-theme="starrail"] .stage.clipping .art { outline: 2px solid var(--hot); outline-offset: 7px; }
+body[data-theme="starrail"] .now-title { font-weight: 300; letter-spacing: 3px; color: var(--gold); text-transform: uppercase; }
+body[data-theme="starrail"] .now-artist { letter-spacing: 4px; text-transform: uppercase; font-size: 13px; color: rgba(238, 240, 255, 0.7); }
+body[data-theme="starrail"] .round {
+  border-radius: 0;
+  width: 54px;
+  height: 54px;
+  background: rgba(233, 204, 142, 0.16);
+  color: var(--gold);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+body[data-theme="starrail"] .round:hover { background: rgba(233, 204, 142, 0.32); }
+body[data-theme="starrail"] .round-big { width: 70px; height: 70px; background: linear-gradient(135deg, #f6e3b4, #dcb669); color: #2b2210; }
+body[data-theme="starrail"] .round-big:hover { background: #fff3cf; }
+body[data-theme="starrail"] .pane-now .btn { background: rgba(233, 204, 142, 0.1); border-color: rgba(233, 204, 142, 0.3); }
+body[data-theme="starrail"] .pane-now .btn[aria-pressed="true"] { background: linear-gradient(180deg, #f6e3b4, #dcb669); color: #2b2210; }
+body[data-theme="starrail"] .line { font-weight: 300; letter-spacing: 1px; color: rgba(238, 240, 255, 0.32); }
+body[data-theme="starrail"] .line.active {
+  color: #fff6dc;
+  font-weight: 500;
+  text-shadow:
+    0 0 calc(12px + var(--bass) * 46px) rgba(233, 204, 142, calc(0.25 + var(--bass) * 0.7)),
+    0 0 calc(var(--bass) * 60px) rgba(140, 120, 255, calc(var(--bass) * 0.8));
+}
+body[data-theme="starrail"] .status { border-color: var(--gold); }

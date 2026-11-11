@@ -104,6 +104,22 @@ ipcMain.handle('boost:linked', () => link.linked);
 const EXTENSION_DIR = app.isPackaged ? path.join(process.resourcesPath, 'extension') : path.join(__dirname, 'extension');
 ipcMain.on('boost:show-extension', (event) => { if (isHost(event)) shell.openPath(EXTENSION_DIR); });
 
+// Window settings from the Settings page.
+ipcMain.on('app:settings', (event, s) => {
+  if (!isHost(event) || !win) return;
+  win.setAlwaysOnTop(Boolean(s.alwaysOnTop));
+  // Only the installed app can sensibly start with Windows (a dev run would register Electron itself).
+  if (app.isPackaged && !SELFTEST) app.setLoginItemSettings({ openAtLogin: Boolean(s.openAtLogin) });
+});
+
+// Discord Rich Presence (settings and what is playing come from the app window).
+const discord = require('./discord')();
+discord.onState((state) => { if (win) win.webContents.send('discord:state', state); });
+ipcMain.on('discord:config', (event, next) => { if (isHost(event)) discord.configure(next); });
+ipcMain.on('discord:presence', (event, next) => { if (isHost(event)) discord.update(next); });
+ipcMain.handle('discord:state', () => discord.state);
+app.on('before-quit', () => discord.stop());
+
 ipcMain.on('boost:params', (event, next) => {
   if (!isHost(event)) return;
   params = next;

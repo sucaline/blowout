@@ -2,3 +2,4 @@ node_modules/
 dist/
 .claude/
 selftest-*.png
+dist-1.2/

@@ -1,0 +1,213 @@
+/* ---------- MATERIAL 3 look ----------
+   A dark Material 3 scheme: tonal surfaces, pill buttons, large rounded cards, switches and
+   segmented buttons in the Material style. The palette comes from the accent color picked in
+   Settings (the --m-* variables are set from it; the values below are the default purple). */
+body[data-theme="material"] {
+  --m-primary: #d0bcff;
+  --m-on-primary: #381e72;
+  --m-primary-container: #4f378b;
+  --m-on-primary-container: #eaddff;
+  --m-secondary-container: #4a4458;
+  --m-on-secondary-container: #e8def8;
+  --m-tertiary: #efb8c8;
+  --m-surface: #141218;
+  --m-surface-1: #1d1b20;
+  --m-surface-2: #211f26;
+  --m-surface-3: #2b2930;
+  --m-on-surface: #e6e0e9;
+  --m-on-surface-variant: #cac4d0;
+  --m-outline: #938f99;
+  --m-outline-variant: #49454f;
+
+  --bg: var(--m-surface);
+  --panel: var(--m-surface-1);
+  --raised: var(--m-surface-3);
+  --line: var(--m-outline-variant);
+  --text: var(--m-on-surface);
+  --dim: var(--m-on-surface-variant);
+  --hot: #f2b8b5;
+  --hot-ink: #601410;
+  --volt: var(--m-primary);
+  --mid: var(--m-tertiary);
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --body: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+  background: var(--m-surface);
+}
+body[data-theme="material"] :focus-visible { outline-color: var(--m-primary); outline-offset: 3px; }
+
+/* sentence-case labels, like Material buttons */
+body[data-theme="material"] .btn,
+body[data-theme="material"] .power,
+body[data-theme="material"] .segmented button,
+body[data-theme="material"] .chip { text-transform: lowercase; }
+body[data-theme="material"] .btn::first-letter,
+body[data-theme="material"] .power::first-letter,
+body[data-theme="material"] .segmented button::first-letter,
+body[data-theme="material"] .chip::first-letter { text-transform: uppercase; }
+
+/* top bar */
+body[data-theme="material"] .topbar { background: var(--m-surface); border-bottom: 0; padding: 12px 16px; }
+body[data-theme="material"] .logo {
+  transform: none;
+  font: 600 22px/1 var(--display);
+  letter-spacing: 0;
+  color: var(--m-primary);
+}
+body[data-theme="material"] .logo span { color: var(--m-on-surface); }
+body[data-theme="material"] .address input {
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--m-surface-3);
+  color: var(--m-on-surface);
+}
+body[data-theme="material"] .address input:focus { box-shadow: 0 0 0 2px var(--m-primary); }
+
+/* buttons: tonal by default, filled for the main action */
+body[data-theme="material"] .btn {
+  height: 40px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--m-secondary-container);
+  color: var(--m-on-secondary-container);
+  font: 500 14px/1 var(--body);
+  letter-spacing: 0.1px;
+}
+body[data-theme="material"] .btn:hover { filter: brightness(1.15); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
+body[data-theme="material"] .btn-small { height: 32px; padding: 0 16px; font-size: 13px; }
+body[data-theme="material"] .btn-hot,
+body[data-theme="material"] .btn-volt,
+body[data-theme="material"] .btn[aria-pressed="true"] { background: var(--m-primary); color: var(--m-on-primary); }
+body[data-theme="material"] .btn-hot { background: var(--m-primary); color: var(--m-on-primary); }
+body[data-theme="material"] .icon-btn {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--m-secondary-container);
+  color: var(--m-on-secondary-container);
+}
+body[data-theme="material"] .chip { border-color: var(--m-outline); color: var(--m-on-surface-variant); font: 500 13px/1 var(--body); letter-spacing: 0; padding: 7px 12px; }
+
+/* stage */
+body[data-theme="material"] .layout { padding: 0 0 12px 12px; gap: 12px; background: var(--m-surface); }
+body[data-theme="material"] .stage { border-radius: 28px; overflow: hidden; background: var(--m-surface-1); }
+body[data-theme="material"] .pane-empty { background: var(--m-surface-1); }
+body[data-theme="material"] .big {
+  transform: none;
+  text-shadow: none;
+  font: 500 clamp(34px, 5vw, 64px)/1.05 var(--display);
+  letter-spacing: -0.5px;
+  color: var(--m-on-surface);
+}
+body[data-theme="material"] .sub { color: var(--m-on-surface-variant); }
+
+/* side panel: a rounded surface card */
+body[data-theme="material"] .panel {
+  width: 332px;
+  margin-right: 12px;
+  border: 0;
+  border-radius: 28px;
+  background: var(--m-surface-1);
+  padding: 18px;
+}
+body[data-theme="material"] .meter { background: var(--m-surface-3); border: 0; border-radius: 20px; padding: 12px; }
+body[data-theme="material"] .clip-light { border-radius: 999px; }
+body[data-theme="material"] .power {
+  height: 56px;
+  border: 0;
+  border-radius: 28px;
+  background: var(--m-secondary-container);
+  color: var(--m-on-secondary-container);
+  font: 500 16px/1 var(--body);
+  letter-spacing: 0.1px;
+}
+body[data-theme="material"] .power[aria-pressed="true"] { background: var(--m-primary); color: var(--m-on-primary); }
+body[data-theme="material"] .label { font: 500 13px/1.2 var(--body); letter-spacing: 0.5px; color: var(--m-on-surface-variant); }
+body[data-theme="material"] .label output { color: var(--m-primary); }
+
+/* sliders */
+body[data-theme="material"] input[type="range"] { height: 24px; }
+body[data-theme="material"] input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--m-primary) var(--fill, 0%), var(--m-surface-3) var(--fill, 0%));
+}
+body[data-theme="material"] input[type="range"]::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: var(--m-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* segmented buttons */
+body[data-theme="material"] .segmented { border: 1px solid var(--m-outline); border-radius: 999px; }
+body[data-theme="material"] .segmented button {
+  height: 40px;
+  background: none;
+  color: var(--m-on-surface);
+  font: 500 13px/1 var(--body);
+  letter-spacing: 0.1px;
+}
+body[data-theme="material"] .segmented button + button { border-left: 1px solid var(--m-outline); }
+body[data-theme="material"] .segmented button.active { background: var(--m-secondary-container); color: var(--m-on-secondary-container); }
+
+body[data-theme="material"] .text-input { border: 1px solid var(--m-outline); border-radius: 12px; background: none; color: var(--m-on-surface); }
+body[data-theme="material"] .select { background: var(--m-surface-3); border-radius: 8px; color: var(--m-on-surface); }
+
+/* switches */
+body[data-theme="material"] .switch { width: 52px; height: 32px; border: 2px solid var(--m-outline); background: var(--m-surface-3); }
+body[data-theme="material"] .switch span { top: 6px; left: 6px; width: 16px; height: 16px; background: var(--m-outline); }
+body[data-theme="material"] .switch[aria-checked="true"] { background: var(--m-primary); border-color: var(--m-primary); }
+body[data-theme="material"] .switch[aria-checked="true"] span { width: 24px; height: 24px; top: 2px; left: 2px; transform: translateX(20px); background: var(--m-on-primary); }
+
+/* settings page */
+body[data-theme="material"] .pane-settings { background: var(--m-surface-1); }
+body[data-theme="material"] .settings-head h1 { font: 400 36px/1.1 var(--display); letter-spacing: 0; }
+body[data-theme="material"] .card { border: 0; border-radius: 24px; background: var(--m-surface-3); padding: 20px 22px; }
+body[data-theme="material"] .card h2 { font: 500 14px/1 var(--body); letter-spacing: 0.5px; text-transform: none; color: var(--m-primary); }
+
+/* Now Playing */
+body[data-theme="material"] .pane-now { background: var(--m-surface); }
+body[data-theme="material"] .now-shade {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--m-surface) 55%, transparent), color-mix(in srgb, var(--m-surface) 92%, transparent));
+}
+body[data-theme="material"] .art {
+  border-radius: 28px;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.45),
+    0 0 calc(var(--bass) * 90px) color-mix(in srgb, var(--m-primary) calc(var(--bass) * 80%), transparent);
+}
+body[data-theme="material"] .stage.clipping .art { outline: 3px solid var(--hot); outline-offset: 3px; }
+body[data-theme="material"] .now-title { font: 600 28px/1.15 var(--display); color: var(--m-on-surface); }
+body[data-theme="material"] .now-artist { font: 400 16px/1.3 var(--body); color: var(--m-on-surface-variant); }
+body[data-theme="material"] .round { background: var(--m-secondary-container); color: var(--m-on-secondary-container); }
+body[data-theme="material"] .round:hover { filter: brightness(1.15); background: var(--m-secondary-container); }
+body[data-theme="material"] .round-big {
+  width: 72px;
+  height: 72px;
+  border-radius: 24px;
+  background: var(--m-primary);
+  color: var(--m-on-primary);
+}
+body[data-theme="material"] .round-big:hover { background: var(--m-primary); }
+body[data-theme="material"] .pane-now .btn { background: var(--m-secondary-container); color: var(--m-on-secondary-container); }
+body[data-theme="material"] .pane-now .btn[aria-pressed="true"] { background: var(--m-primary); color: var(--m-on-primary); }
+body[data-theme="material"] .now-sync output { color: var(--m-primary); }
+body[data-theme="material"] .line { font-weight: 600; color: color-mix(in srgb, var(--m-on-surface) 34%, transparent); }
+body[data-theme="material"] .line.past { color: color-mix(in srgb, var(--m-on-surface) 20%, transparent); }
+body[data-theme="material"] .line.active {
+  color: var(--m-primary);
+  text-shadow: 0 0 calc(8px + var(--bass) * 36px) color-mix(in srgb, var(--m-primary) calc(20% + var(--bass) * 50%), transparent);
+}
+body[data-theme="material"] .status {
+  border: 0;
+  border-radius: 12px;
+  background: var(--m-surface-3);
+  color: var(--m-on-surface);
+}

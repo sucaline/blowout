@@ -60,6 +60,23 @@ module.exports = async function selftest(win) {
   console.log('RESULT file clean ', JSON.stringify(clean));
   console.log('RESULT file fried ', JSON.stringify(fried));
 
+  // The three looks, each on Now Playing and on the Settings page.
+  for (const look of ['starrail', 'material', 'blowout']) {
+    await run(`applyLook('${look}'); setView('now', true)`);
+    await sleep(700);
+    await shot(`selftest-look-${look}-now.png`);
+    await run(`$('settings-btn').click()`);
+    await sleep(500);
+    await shot(`selftest-look-${look}-settings.png`);
+    await run(`$('settings-done').click()`);
+  }
+  await run(`applyLook('material'); setView('empty', true)`);
+  await sleep(500);
+  await shot('selftest-look-material-empty.png');
+  console.log('RESULT look', await run(`JSON.stringify({ theme: document.body.dataset.theme, bar: barColors, view: stage.dataset.view })`));
+  await run(`applyLook('blowout'); setView('now', true)`);
+  if (process.env.SELFTEST_LOOK) return app.exit(0);
+
   const guest = (js) => run(`view.executeJavaScript(${JSON.stringify(js)})`).catch((e) => `ERR ${e.message}`);
   const open = async (url, ms) => {
     await run(`openLink(${JSON.stringify(url)})`);

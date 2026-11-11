@@ -6,6 +6,9 @@
         content="default-src 'self'; media-src blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:">
   <title>BLOWOUT</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="settings.css">
+  <link rel="stylesheet" href="starrail.css">
+  <link rel="stylesheet" href="material.css">
 </head>
 <body>
   <header class="topbar">
@@ -19,6 +22,7 @@
     <span id="chrome-link" class="chip" title="The BLOWOUT Link extension in your browser is connected" hidden>CHROME LINKED</span>
     <button id="now-toggle" class="btn btn-volt" hidden>NOW PLAYING</button>
     <button id="open-file" class="btn">OPEN FILE</button>
+    <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">&#9881;&#xFE0E;</button>
     <input id="file-input" type="file" hidden
            accept="audio/*,video/mp4,video/webm,.mp3,.wav,.flac,.ogg,.m4a,.opus,.aac">
   </header>
@@ -100,6 +104,84 @@
           </div>
 
           <div id="lyrics" class="lyrics"></div>
+        </div>
+      </div>
+
+      <div id="settings" class="pane pane-settings">
+        <div class="settings-page">
+          <header class="settings-head">
+            <h1>Settings</h1>
+            <button id="settings-done" class="btn btn-volt">DONE</button>
+          </header>
+
+          <section class="card">
+            <h2>Appearance</h2>
+            <div class="opt">
+              <div class="opt-text"><p class="opt-name">Look</p><p class="hint">Same app, different skin.</p></div>
+            </div>
+            <div class="segmented three" id="look">
+              <button data-theme="blowout">BLOWOUT</button>
+              <button data-theme="starrail">STAR RAIL</button>
+              <button data-theme="material">MATERIAL 3</button>
+            </div>
+            <div class="opt" id="accent-row">
+              <div class="opt-text"><p class="opt-name">Accent color</p><p class="hint">Material 3 builds its whole palette from this.</p></div>
+              <input id="accent" type="color" value="#6750a4" aria-label="Accent color">
+            </div>
+        <div class="opt">
+          <div class="opt-text"><p class="opt-name">Calm mode</p><p class="hint" id="set-calm-hint">No bass pulsing, spinning backdrop or clip glitching on Now Playing.</p></div>
+          <button id="set-calm" class="switch" role="switch" aria-checked="false" aria-label="Calm mode"><span></span></button>
+        </div>
+          </section>
+
+          <section class="card">
+            <h2>Playing</h2>
+        <div class="opt">
+          <div class="opt-text"><p class="opt-name">Open Now Playing automatically</p><p class="hint" id="set-autonow-hint">Jump to the lyrics screen when you pick a song.</p></div>
+          <button id="set-autonow" class="switch" role="switch" aria-checked="false" aria-label="Open Now Playing automatically"><span></span></button>
+        </div>
+        <div class="opt">
+          <div class="opt-text"><p class="opt-name">Keep BLOWOUT on top</p><p class="hint" id="set-top-hint">Stay above other windows.</p></div>
+          <button id="set-top" class="switch" role="switch" aria-checked="false" aria-label="Keep BLOWOUT on top"><span></span></button>
+        </div>
+        <div class="opt">
+          <div class="opt-text"><p class="opt-name">Start with Windows</p><p class="hint" id="set-login-hint">Only works in the installed app.</p></div>
+          <button id="set-login" class="switch" role="switch" aria-checked="false" aria-label="Start with Windows"><span></span></button>
+        </div>
+          </section>
+
+          <section class="card">
+            <h2>Lyrics</h2>
+        <div class="opt">
+          <div class="opt-text"><p class="opt-name">Look up lyrics</p><p class="hint" id="set-lyrics-hint">Sends the song title and artist to LRCLIB, NetEase and lyrics.ovh (the fallbacks). Off means nothing is sent.</p></div>
+          <button id="set-lyrics" class="switch" role="switch" aria-checked="false" aria-label="Look up lyrics"><span></span></button>
+        </div>
+            <div class="opt">
+              <div class="opt-text"><p class="opt-name">Translate into</p><p class="hint">Used by the TRANSLATE button on Now Playing.</p></div>
+              <select id="set-lang" class="select"></select>
+            </div>
+          </section>
+
+          <section class="card">
+            <h2>Discord</h2>
+        <div class="opt">
+          <div class="opt-text"><p class="opt-name">Show what I am playing</p><p class="hint" id="discord-note">Show what you are playing on your Discord profile.</p></div>
+          <button id="discord-toggle" class="switch" role="switch" aria-checked="false" aria-label="Show what I am playing"><span></span></button>
+        </div>
+            <details id="discord-setup">
+              <summary class="hint">Application ID</summary>
+              <input id="discord-id" class="text-input" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="paste your Discord application ID">
+              <p class="hint">Make one at discord.com/developers/applications (name it BLOWOUT, that is what shows up as "Listening to"), then copy its Application ID here.</p>
+            </details>
+          </section>
+
+          <section class="card">
+            <h2>Reset</h2>
+            <div class="opt">
+              <div class="opt-text"><p class="opt-name">Reset all settings</p><p class="hint">Back to the defaults, including your boost levels.</p></div>
+              <button id="set-reset" class="btn btn-hot">RESET</button>
+            </div>
+          </section>
         </div>
       </div>
 
