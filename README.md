@@ -42,9 +42,39 @@ Spotify ever refuses to play, that is the first thing to look at.
 
 ## Phone web app (iPhone, Android)
 
-`docs/` is a small installable web app with the same chain for audio files on your phone. Open it
-in Safari, tap Share, then "Add to Home Screen". It cannot do links: phone browsers don't let a
-page touch another site's audio.
+`docs/` is a small installable web app with the same chain for audio files on your phone, live at
+**https://sucaline.github.io/blowout/**. It cannot do links: phone browsers don't let a page touch
+another site's audio.
+
+### Install on iPhone / iPad
+
+There is no App Store download. It installs from Safari in under a minute:
+
+1. On the iPhone, open **https://sucaline.github.io/blowout/** in **Safari**.
+2. Tap the **Share** button (the square with an arrow pointing up).
+3. Scroll down and tap **Add to Home Screen**, then **Add**.
+4. Open **BLOWOUT** from the Home Screen. It runs full screen like a normal app and works offline
+   after the first launch.
+
+Using it:
+
+1. Tap **CHOOSE A SONG** and pick an audio file from the Files app (.mp3, .m4a, .wav).
+2. Pick a preset or drag BASS and LOUD. Start with OUTPUT VOLUME low: it comes after the clipper,
+   so the crunch stays and only the level drops.
+
+Good to know:
+
+- **It needs actual audio files.** Songs inside Apple Music, Spotify or YouTube are not files and
+  can't be picked. Get files onto the phone with AirDrop, iCloud Drive, or by saving a download to
+  Files.
+- **Nothing is uploaded.** The song is processed on the phone.
+- **Updates are automatic.** Opening the app with a connection picks up the latest version.
+- **To remove it,** press and hold the icon and tap Remove App.
+- If there is no sound, tap the play button once more (iOS only starts audio from a tap) and check
+  the phone's volume.
+- Playback may pause when the screen locks or you switch apps; iOS decides that for web apps.
+
+On Android the same link works in Chrome: menu, then **Add to Home screen** / **Install app**.
 
 ## Self-test
 
