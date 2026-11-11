@@ -2,6 +2,13 @@
 
 Bass boost and loud the hell out of any song, live. Clipping is a feature.
 
+> **Disclaimer: the Chrome extension (BLOWOUT Link) is not on the Chrome Web Store.** You load it
+> yourself as an unpacked extension in Developer mode, so Chrome will show a "disable developer
+> mode extensions" warning at startup. It is open source (see `extension/`), only runs on
+> music.youtube.com, www.youtube.com and open.spotify.com, and only talks to the BLOWOUT app on
+> your own PC. Setup steps are [below](#signing-in-and-using-your-real-chrome-blowout-link).
+> BLOWOUT is not affiliated with YouTube, Google or Spotify.
+
 Paste a YouTube, YouTube Music or Spotify link (or open an audio file) and it plays inside the
 app with its sound pushed through:
 
