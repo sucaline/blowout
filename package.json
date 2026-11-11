@@ -7,9 +7,10 @@
   "license": "GPL-3.0-or-later",
   "private": true,
   "scripts": {
+    "postinstall": "node node_modules/electron/install.js",
     "start": "electron .",
     "selftest": "electron . --selftest",
-    "build": "electron-packager . BLOWOUT --platform=win32 --arch=x64 --out=dist --overwrite --download.mirrorOptions.mirror=https://github.com/castlabs/electron-releases/releases/download/ --ignore=\"^/(dist|docs|selftest|\\.claude)\""
+    "build": "electron-packager . BLOWOUT --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.ico --download.mirrorOptions.mirror=https://github.com/castlabs/electron-releases/releases/download/ --ignore=\"^/(dist|docs|selftest|\\.claude)\""
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",

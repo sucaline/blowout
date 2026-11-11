@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="cone" cx="50%" cy="50%" r="50%">
+      <stop offset="0.3" stop-color="#8a1806"/>
+      <stop offset="1" stop-color="#ff3d1f"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#0a0a0b"/>
+
+  <!-- the blast -->
+  <polygon fill="#ff3d1f" points="995,641 824,692 823,823 692,824 641,995 512,872 398,937 332,824 158,866 200,692 87,626 152,512 29,383 200,332 201,201 332,200 383,29 512,152 626,87 692,200 866,158 824,332 937,398 872,512"/>
+  <polygon fill="#ffd600" points="982,512 845,601 863,715 756,756 747,919 601,845 512,917 423,845 277,919 268,756 161,715 179,601 42,512 179,423 161,309 268,268 277,105 423,179 512,107 601,179 747,105 756,268 863,309 845,423"/>
+
+  <!-- frame and its screws -->
+  <circle cx="512" cy="512" r="334" fill="#f3f0e8"/>
+  <g fill="#0a0a0b">
+    <circle cx="823" cy="512" r="11"/>
+    <circle cx="512" cy="823" r="11"/>
+    <circle cx="201" cy="512" r="11"/>
+    <circle cx="512" cy="201" r="11"/>
+  </g>
+
+  <!-- rubber surround -->
+  <circle cx="512" cy="512" r="290" fill="#0a0a0b"/>
+  <circle cx="512" cy="512" r="270" fill="none" stroke="#2a2a30" stroke-width="14"/>
+
+  <!-- cone, ribs, dust cap -->
+  <circle cx="512" cy="512" r="248" fill="url(#cone)"/>
+  <g fill="none" stroke="#0a0a0b" stroke-opacity="0.22" stroke-width="7">
+    <circle cx="512" cy="512" r="205"/>
+    <circle cx="512" cy="512" r="160"/>
+  </g>
+  <circle cx="512" cy="512" r="94" fill="#121214" stroke="#2a2a30" stroke-width="8"/>
+  <path d="M452 478 A68 68 0 0 1 520 444" fill="none" stroke="#f3f0e8" stroke-opacity="0.35" stroke-width="12" stroke-linecap="round"/>
+
+  <!-- the rip -->
+  <g stroke="#0a0a0b" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M545 455 L628 392 L640 318"/>
+    <path d="M452 548 L392 628 L318 652"/>
+  </g>
+  <polygon fill="#0a0a0b" stroke="#f3f0e8" stroke-width="12" stroke-linejoin="miter"
+           points="300,300 524,436 474,518 664,606 618,676 748,762 556,704 600,638 416,562 464,488"/>
+</svg>

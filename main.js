@@ -36,6 +36,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#0a0a0b',
     title: 'BLOWOUT',
+    icon: path.join(__dirname, 'icon.ico'),
     autoHideMenuBar: true,
     webPreferences: { preload: PRELOAD, webviewTag: true },
   });
