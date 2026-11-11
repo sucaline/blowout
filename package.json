@@ -3,6 +3,7 @@
   "productName": "BLOWOUT",
   "version": "1.0.0",
   "description": "Bass boost and loud the hell out of any song, live.",
+  "author": "sucaline",
   "main": "main.js",
   "license": "GPL-3.0-or-later",
   "private": true,
@@ -10,10 +11,19 @@
     "postinstall": "node node_modules/electron/install.js",
     "start": "electron .",
     "selftest": "electron . --selftest",
-    "build": "electron-packager . BLOWOUT --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.ico --download.mirrorOptions.mirror=https://github.com/castlabs/electron-releases/releases/download/ --ignore=\"^/(dist|docs|selftest|\\.claude)\""
+    "build": "electron-packager . BLOWOUT --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.ico --download.mirrorOptions.mirror=https://github.com/castlabs/electron-releases/releases/download/ --ignore=\"^/(dist|docs|selftest|\\.claude|\\.github)\"",
+    "installer": "npm run build && electron-builder --win nsis --x64 --prepackaged dist/BLOWOUT-win32-x64"
+  },
+  "build": {
+    "appId": "io.github.sucaline.blowout",
+    "productName": "BLOWOUT",
+    "directories": { "output": "dist/installer" },
+    "win": { "icon": "icon.ico", "signAndEditExecutable": false },
+    "nsis": { "artifactName": "BLOWOUT-Setup-${version}.${ext}", "shortcutName": "BLOWOUT" }
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",
-    "electron": "github:castlabs/electron-releases#v45.2.1+wvcus"
+    "electron": "github:castlabs/electron-releases#v45.2.1+wvcus",
+    "electron-builder": "^26.18.0"
   }
 }

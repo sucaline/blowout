@@ -21,6 +21,10 @@ npm start
 
 `npm run build` makes a double-click `BLOWOUT.exe` in `dist/BLOWOUT-win32-x64`.
 
+`npm run installer` makes `dist/installer/BLOWOUT-Setup-1.0.0.exe`, a one-click installer that puts
+BLOWOUT in the Start menu and on the desktop, with an uninstaller. It is not code-signed, so
+Windows SmartScreen will warn the first time it runs (More info, then Run anyway).
+
 - **Links:** the address bar takes a link, a `spotify:` URI, or plain words (searches YouTube).
 - **Files:** OPEN FILE or drag one in (.mp3, .wav, .flac, .ogg, .m4a).
 - **Controls:** BASS and LOUD go to +40 dB each, three clip styles, four presets.
