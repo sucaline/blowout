@@ -14,6 +14,11 @@ your speakers is changed.
 
 ## Desktop app (Windows)
 
+**[Download the installer](https://github.com/sucaline/blowout/releases/latest)** and run it. It is
+not code-signed, so Windows SmartScreen will warn the first time: More info, then Run anyway.
+
+Or run it from source:
+
 ```bash
 npm install
 npm start
