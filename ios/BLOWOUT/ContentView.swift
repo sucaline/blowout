@@ -58,7 +58,19 @@ struct ContentView: View {
             pill("LYRICS") { showLyrics = true }
             Spacer()
             icon("arrow.clockwise") { browser.webView.reload() }
-            icon(browser.desktop ? "desktopcomputer" : "iphone") { browser.toggleDesktop() }
+            Menu {
+                Button { browser.toggleDesktop() } label: {
+                    Label(browser.desktop ? "Desktop site: on" : "Desktop site: off", systemImage: browser.desktop ? "desktopcomputer" : "iphone")
+                }
+                Button { browser.toggleCompat() } label: {
+                    Label(browser.compat ? "Compat mode: on" : "Compat mode: off (try if boost does nothing)", systemImage: browser.compat ? "checkmark.circle.fill" : "circle")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(width: 40, height: 40)
+            }
+            .foregroundColor(.white)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -78,9 +90,11 @@ struct ContentView: View {
     private func pill(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 12, weight: .heavy))
-                .tracking(1.5)
-                .padding(.horizontal, 10)
+                .font(.system(size: 11, weight: .heavy))
+                .tracking(1)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 9)
                 .padding(.vertical, 8)
                 .background(Theme.red)
                 .foregroundColor(.black)

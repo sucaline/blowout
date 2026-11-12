@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import AVFoundation
 
 /// What the page says is playing, as reported by the BLOWOUT engine inside it.
 struct Track {
@@ -27,6 +28,7 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     @Published var canGoForward = false
     @Published var loading = false
     @Published var desktop = false
+    @Published var compat = UserDefaults.standard.bool(forKey: "compat")
     @Published var track: Track?
 
     private var observers: [NSKeyValueObservation] = []
@@ -42,9 +44,8 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
         super.init()
 
         controller.add(self, name: "blowout")
-        if let source = Browser.engineScript() {
-            controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        }
+        installScript()
+        NotificationCenter.default.addObserver(self, selector: #selector(wentToBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
 
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -69,13 +70,39 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
 
     /// extension/page.js (the Chrome extension's engine), run only on the sites it is for, in
     /// the same standalone mode as the iPhone bookmark, plus a bridge that reports the song.
-    static func engineScript() -> String? {
+    static func engineScript(compat: Bool) -> String? {
         guard let url = Bundle.main.url(forResource: "page", withExtension: "js"),
               let page = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        // Compat mode hides MediaSource from the page, so YouTube plays with Safari's own
+        // streaming instead, which (unlike MediaSource playback) iOS can feed through Web Audio.
+        let compatCode = compat ? #"""
+          ['MediaSource', 'ManagedMediaSource', 'WebKitMediaSource'].forEach(function (name) {
+            try { delete window[name]; } catch (e) {}
+            if (name in window) { try { Object.defineProperty(window, name, { value: undefined, configurable: true }); } catch (e) {} }
+          });
+        """# : ""
         let prelude = #"""
         (function () {
           if (!/^(music\.|www\.|m\.)youtube\.com$|^open\.spotify\.com$/.test(location.hostname)) return;
           window.__blowoutBookmarklet = 1;
+          // Keep playing in the background: the page is told it is always visible, so it does
+          // not pause itself when you switch apps or lock the phone.
+          var realHidden = null;
+          try { realHidden = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden').get; } catch (e) {}
+          try {
+            Object.defineProperty(document, 'hidden', { get: function () { return false; }, configurable: true });
+            Object.defineProperty(document, 'visibilityState', { get: function () { return 'visible'; }, configurable: true });
+          } catch (e) {}
+          var stop = function (e) { e.stopImmediatePropagation(); };
+          window.addEventListener('visibilitychange', stop, true);
+          document.addEventListener('visibilitychange', stop, true);
+          window.__bwPlaying = false;
+          document.addEventListener('play', function () { window.__bwPlaying = true; }, true);
+          document.addEventListener('pause', function () {
+            if (!realHidden || !realHidden.call(document)) window.__bwPlaying = false;
+          }, true);
+        """# + compatCode + #"""
+
           document.addEventListener('blowout:out', function (event) {
             try {
               var message = JSON.parse(event.detail);
@@ -135,6 +162,43 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
         }
         if let url = target { webView.load(URLRequest(url: url)) }
     }
+
+    private func installScript() {
+        let controller = webView.configuration.userContentController
+        controller.removeAllUserScripts()
+        if let source = Browser.engineScript(compat: compat) {
+            controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+    }
+
+    func toggleCompat() {
+        compat.toggle()
+        UserDefaults.standard.set(compat, forKey: "compat")
+        installScript()
+        webView.reload()
+    }
+
+    // MARK: background playback
+
+    /// The page is told it is always visible (see engineScript) so it keeps playing. If it
+    /// pauses anyway when the app goes to the background, press play again for it.
+    @objc private func wentToBackground() {
+        try? AVAudioSession.sharedInstance().setActive(true)
+        for delay in [0.7, 2.5, 6.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.webView.evaluateJavaScript(Browser.resumeScript, completionHandler: nil)
+            }
+        }
+    }
+
+    private static let resumeScript = """
+    (function () {
+      if (!window.__bwPlaying) return;
+      document.querySelectorAll('video, audio').forEach(function (el) {
+        if (el.paused && el.readyState > 0) el.play().catch(function () {});
+      });
+    })();
+    """
 
     func toggleDesktop() {
         desktop.toggle()

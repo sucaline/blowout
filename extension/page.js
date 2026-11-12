@@ -114,6 +114,43 @@
     wake();
   }
 
+  // iPhone: Safari's web view cannot always feed a playing video into the audio chain (it hands
+  // over silence while the song keeps playing normally, so boosting does nothing). If the chain
+  // stays silent for 3 seconds while something plays, switch to capturing the element's output
+  // as a stream instead; if that is silent too, put everything back the way it was.
+  let silentSince = 0;
+  let rescue = 0; // 0 = normal, 1 = trying capture, 2 = gave up
+  const captured = new Map(); // element -> the stream node feeding the chain
+  function watchSignal(peak) {
+    if (peak > 0.001) { silentSince = 0; if (rescue === 1) { rescue = 3; diag.cap = 'capture works'; } return; }
+    if (!silentSince) { silentSince = Date.now(); return; }
+    if (Date.now() - silentSince < 3000 || rescue === 2 || rescue === 3) return;
+    silentSince = 0;
+    if (rescue === 0) {
+      rescue = 1;
+      for (const el of hooked) {
+        if (el.paused || captured.has(el)) continue;
+        const grab = el.captureStream || el.webkitCaptureStream;
+        if (!grab) { diag.cap = 'no captureStream'; continue; }
+        try {
+          const tracks = grab.call(el).getAudioTracks();
+          if (!tracks.length) { diag.cap = 'capture has no audio'; continue; }
+          const node = ctx.createMediaStreamSource(new MediaStream(tracks));
+          node.connect(input);
+          el.muted = true; // the chain carries the sound now
+          captured.set(el, node);
+          diag.cap = 'capturing';
+        } catch (e) { diag.cap = 'capture failed ' + e.name; }
+      }
+      if (!captured.size) rescue = 2;
+    } else {
+      rescue = 2;
+      for (const [el, node] of captured) { try { node.disconnect(); } catch {} el.muted = false; }
+      captured.clear();
+      diag.cap = 'capture silent, undone';
+    }
+  }
+
   function notice(el) {
     known.add(el);
     if (armed) hook(el);
@@ -187,8 +224,11 @@
     for (const el of hooked) {
       if (!el.paused && !el.ended && el.readyState > 2) active = true;
     }
-    if (active) send({ type: 'meter', meter: measure() });
-    else if (wasActive) send({ type: 'meter', meter: { bars: new Array(BARS).fill(0), peak: 0 } });
+    if (active) {
+      const meter = measure();
+      send({ type: 'meter', meter });
+      watchSignal(meter.peak);
+    } else if (wasActive) send({ type: 'meter', meter: { bars: new Array(BARS).fill(0), peak: 0 } });
     wasActive = active;
   }, 40);
 
@@ -266,7 +306,7 @@
       .title { font:italic 800 18px system-ui; letter-spacing:1px; } .title span { color:#ff3d1f; }
       button { font:700 11px system-ui; letter-spacing:1px; color:#f3f0e8; background:#1b1b1f; border:1px solid #2a2a30; border-radius:4px; padding:7px 9px; cursor:pointer; }
       button.on { background:#ffd600; border-color:#ffd600; color:#171300; }
-      .presets { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin-bottom:10px; }
+      .presets { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; margin-bottom:10px; }
       label { display:block; margin-bottom:8px; color:#8d8a84; font-size:11px; letter-spacing:1px; }
       label b { float:right; color:#ffd600; font:11px ui-monospace,monospace; }
       input[type=range] { width:100%; accent-color:#ffd600; margin:2px 0 0; }
@@ -323,7 +363,7 @@
           for (const v of data) if (Math.abs(v) > peak) peak = Math.abs(v);
         }
         const media = [...known].map((e) => e.tagName[0] + ':' + ((e.currentSrc || '').slice(0, 5) || (e.srcObject ? 'obj' : '-')) + ':' + (e.paused ? 'paused' : 'playing') + e.readyState).join(' ');
-        debug.textContent = 'engine: ctx ' + (ctx ? ctx.state + '@' + ctx.sampleRate : 'none') + ' | hooked ' + hooked.size + '/' + known.size + ' | peak ' + peak.toFixed(2) + ' | ' + (diag.err ? 'ERROR ' + diag.err : 'no error') + ' | ' + media;
+        debug.textContent = 'engine: ctx ' + (ctx ? ctx.state + '@' + ctx.sampleRate : 'none') + ' | hooked ' + hooked.size + '/' + known.size + ' | peak ' + peak.toFixed(2) + ' | ' + (diag.err ? 'ERROR ' + diag.err : 'no error') + ' | rescue ' + rescue + ' ' + (diag.cap || '-') + ' | MSE ' + (window.MediaSource || window.ManagedMediaSource ? 'yes' : 'no') + ' | ' + media;
       };
       setInterval(() => { if (!card.hidden) report(); }, 1000);
     }
