@@ -207,6 +207,7 @@
 
   function setLocal(changes) {
     local = { ...local, ...changes };
+    if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); // iOS wants this inside a tap
     try { localStorage.setItem('blowout-panel', JSON.stringify(local)); } catch { /* storage blocked */ }
     if (appLinked) return;
     params = local;
@@ -307,8 +308,9 @@
   const startPanel = () => setTimeout(() => {
     buildPanel();
     // Come back the way you left it: boost stays on across pages if you left it on.
-    if (!appLinked && local.on) setLocal({});
-  }, 2500);
+    // (Not in bookmarklet mode: iOS needs a tap before sound can go through the chain.)
+    if (!appLinked && local.on && !window.__blowoutBookmarklet) setLocal({});
+  }, window.__blowoutBookmarklet ? 0 : 2500);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startPanel);
   else startPanel();
 

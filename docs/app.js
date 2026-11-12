@@ -329,3 +329,17 @@ document.getElementById('set-reset').addEventListener('click', () => {
 showCalm();
 applyAccent(store('accent') || '#6750a4');
 applyLook(store('look'));
+
+// ---------- bookmark for boosting YouTube Music in Safari ----------
+document.getElementById('bm-copy').addEventListener('click', async () => {
+  const note = document.getElementById('bm-note');
+  note.hidden = false;
+  try {
+    const code = await (await fetch('bookmarklet.txt', { cache: 'no-cache' })).text();
+    await navigator.clipboard.writeText(code);
+    document.getElementById('bm-copy').textContent = 'COPIED. NOW DO STEPS 2 TO 4';
+    note.textContent = 'Copied. It is a long code; that is normal.';
+  } catch {
+    note.textContent = 'Could not copy. Open bookmarklet.txt on this site, select all of it, and copy it by hand.';
+  }
+});
