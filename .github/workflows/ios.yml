@@ -46,7 +46,7 @@ jobs:
       - name: Package the .ipa
         working-directory: ios
         run: |
-          VERSION=$(grep -m1 'MARKETING_VERSION' project.yml | sed 's/[^0-9.]//g')
+          VERSION=$(grep -m1 -E '^ +MARKETING_VERSION:' project.yml | sed 's/[^0-9.]//g')
           rm -rf Payload && mkdir Payload
           cp -R build/Build/Products/Release-iphoneos/BLOWOUT.app Payload/
           zip -qry "BLOWOUT-iOS-$VERSION.ipa" Payload

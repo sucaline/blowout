@@ -124,6 +124,34 @@ Spotify's web player is DRM-protected, so the app runs on the
 Widevine module (fetched from Google on first launch). The build here is not VMP-signed; if
 Spotify ever refuses to play, that is the first thing to look at.
 
+## iPhone app (sideload)
+
+`ios/` is a native iPhone app: a small browser that opens YouTube Music (or YouTube, or any link) and
+runs the same BLOWOUT engine as the extension inside the page, so you get the BLOWOUT panel
+(presets, bass, loud, clip style, speed with pitch kept, output volume) on the real site. A LYRICS
+button shows timed lyrics from LRCLIB with play, pause and skip. It is built on GitHub (the repo's
+**iOS app** workflow, on a free Mac runner) as an unsigned `.ipa` attached to the releases; there is
+no App Store version.
+
+To install it from Windows:
+
+1. Install [Sideloadly](https://sideloadly.io) (it needs iTunes from apple.com, not the Microsoft
+   Store version) and plug the iPhone in.
+2. Download `BLOWOUT-iOS-<version>.ipa` from the [latest release](https://github.com/sucaline/blowout/releases/latest),
+   drag it into Sideloadly, enter your Apple ID and click Start. A free Apple ID works.
+3. On the iPhone: Settings, General, VPN & Device Management, trust your Apple ID. (On iOS 16 and later
+   also switch on Developer Mode in Settings, Privacy & Security.)
+4. A free Apple ID signs the app for **7 days**; reinstall from Sideloadly weekly, or use
+   [AltStore](https://altstore.io), which refreshes it for you while your PC is on.
+
+Good to know:
+
+- The app presents itself as Safari, which is what lets Google sign-in work inside it. Sign in once and
+  you stay signed in.
+- It sends the song's title, artist and length to LRCLIB when you open LYRICS, nothing else.
+- Spotify's web player needs DRM that iOS web views don't have, so Spotify won't play in it.
+- Not tested by me on a real iPhone (I have no Mac or iPhone). If something is off, open an issue.
+
 ## Phone web app (iPhone, Android)
 
 `docs/` is a small installable web app with the same chain for audio files on your phone, live at
