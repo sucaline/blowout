@@ -16,8 +16,9 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.userAgentFallback = app.userAgentFallback
   .replace(/\sElectron\/\S+/, '')
   .replace(new RegExp(`\\s${app.getName()}\\/\\S+`, 'i'), '');
-// Note: Google refuses account sign-in from any browser embedded in an app, this one included.
-// YouTube and YouTube Music still play signed out.
+// Google refuses sign-in from browsers embedded in apps; signin.js gets around that on its
+// sign-in pages only.
+const { allowGoogleSignIn } = require('./signin');
 
 let win = null;
 let params = null; // latest settings from the UI; handed to every page as it loads
@@ -152,6 +153,7 @@ ipcMain.on('boost:meter', (event, meter) => {
 
 app.whenReady().then(async () => {
   const web = session.fromPartition(PARTITION);
+  allowGoogleSignIn(web);
   // Sites inside the app get fullscreen and DRM playback, nothing else (no mic, location…).
   web.setPermissionRequestHandler((_wc, permission, done) => {
     done(permission === 'fullscreen' || permission === 'protected-media-identifier');

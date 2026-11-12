@@ -90,11 +90,13 @@ allow extensions like this; Orion is the one that does (not tested by me).
 
 Spotify: sign in on Spotify's own page inside the app. Your details go straight to Spotify.
 
-Google (YouTube, YouTube Music): **not possible inside the app.** Google refuses sign-ins from any
-browser embedded in an app ("This browser or app may not be secure"). Signed out, they still play
-in the app, with ads and without your library.
+Google (YouTube, YouTube Music): Google tries to refuse sign-ins from browsers embedded in apps
+("This browser or app may not be secure"). On Google's sign-in pages only, the app introduces itself
+as Firefox, which gets past that some of the time (in my tests roughly half of the attempts): if you
+see the message, click **Try again**. Once you are in, YouTube and YouTube Music stay signed in. Signed
+out, they still play in the app, with ads and without your library.
 
-To use your signed-in account, play the music in your real Chrome and let the app run it from
+For a sign-in that always works, play the music in your real Chrome and let the app run it from
 there. The **BLOWOUT Link** extension (the `extension/` folder, also bundled with the installed
 app) boosts the audio inside Chrome and connects to the app, which stays the control panel:
 sliders, presets, Now Playing, lyrics, play/pause/seek/skip.
