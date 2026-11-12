@@ -13,6 +13,7 @@
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="icon" href="icon-192.png">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="looks.css">
 </head>
 <body>
   <main class="app">
@@ -85,6 +86,22 @@
         <input id="out" type="range" min="0" max="100" step="1">
       </label>
       <p class="hint">Comes after the clipper, so turning this down keeps all the crunch and just saves your ears.</p>
+    </section>
+
+    <section class="card" id="ytm">
+      <h2>YouTube Music</h2>
+      <p class="hint">iPhone does not let a web app touch another site's audio, so BLOWOUT cannot boost YouTube Music here (the desktop app can). Open it for normal playback, or boost audio files with the player above.</p>
+      <a class="btn btn-wide" href="https://music.youtube.com/" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;text-decoration:none">OPEN YOUTUBE MUSIC</a>
+    </section>
+
+    <section class="card">
+      <h2>Settings</h2>
+      <div class="look-btns" id="look">
+        <button data-theme="blowout">BLOWOUT</button><button data-theme="starrail">STAR RAIL</button><button data-theme="material">MATERIAL 3</button>
+      </div>
+      <div class="opt" id="accent-row"><span>Accent color</span><input id="accent" type="color" value="#6750a4" aria-label="Accent color"></div>
+      <div class="opt"><span>Calm mode</span><button id="set-calm" class="switch" role="switch" aria-checked="false" aria-label="Calm mode"><span></span></button></div>
+      <button id="set-reset" class="btn">RESET SETTINGS</button>
     </section>
 
     <p id="install-tip" class="hint tip" hidden>On iPhone: tap Share, then “Add to Home Screen” to install it like an app.</p>

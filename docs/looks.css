@@ -1,0 +1,40 @@
+/* Looks for the phone app: BLOWOUT (default), STAR RAIL and MATERIAL 3. */
+.card { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.card h2 { margin: 0; font: 15px/1 var(--display); letter-spacing: 2px; text-transform: uppercase; color: var(--volt); }
+.opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.switch { position: relative; flex: none; width: 48px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 999px; background: var(--raised); }
+.switch span { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--dim); transition: transform .15s; }
+.switch[aria-checked="true"] { background: var(--volt); border-color: var(--volt); }
+.switch[aria-checked="true"] span { transform: translateX(22px); background: #171300; }
+#accent { width: 48px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+body:not([data-theme="material"]) #accent-row { display: none; }
+.look-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.look-btns button { height: 40px; border: 1px solid var(--line); background: var(--raised); color: var(--dim); font: 13px var(--display); letter-spacing: 1px; border-radius: 4px; }
+.look-btns button.active { background: var(--volt); color: #171300; border-color: var(--volt); }
+
+body[data-theme="starrail"] {
+  --bg: #0b0d1f; --panel: #10132b; --raised: #1a1e40; --line: #3a3f6e; --text: #eef0ff; --dim: #8b90b8;
+  --hot: #ff6b9a; --hot-ink: #2a0614; --volt: #e9cc8e; --mid: #f3a6c8; --display: -apple-system, "Helvetica Neue", sans-serif;
+  background: radial-gradient(900px 500px at 85% -10%, rgba(120,90,220,.3), transparent 70%), radial-gradient(700px 500px at 0 110%, rgba(60,120,220,.22), transparent 70%), #0b0d1f;
+}
+body[data-theme="starrail"] .logo { font-weight: 300; letter-spacing: 7px; color: #f6e3b4; transform: none; }
+body[data-theme="starrail"] .btn, body[data-theme="starrail"] .power, body[data-theme="starrail"] .look-btns button {
+  border-radius: 0; letter-spacing: 2px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+body[data-theme="starrail"] .card { border-radius: 0; border-color: rgba(233,204,142,.35); }
+
+body[data-theme="material"] {
+  --bg: var(--m-surface, #141218); --panel: var(--m-surface-1, #1d1b20); --raised: var(--m-surface-3, #2b2930); --line: var(--m-outline-variant, #49454f);
+  --text: var(--m-on-surface, #e6e0e9); --dim: var(--m-on-surface-variant, #cac4d0); --hot: #f2b8b5; --hot-ink: #601410;
+  --volt: var(--m-primary, #d0bcff); --mid: var(--m-tertiary, #efb8c8); --display: -apple-system, "Helvetica Neue", sans-serif; --body: -apple-system, system-ui, sans-serif;
+}
+body[data-theme="material"] .logo { transform: none; font-weight: 600; letter-spacing: 0; }
+body[data-theme="material"] .btn, body[data-theme="material"] .power, body[data-theme="material"] .look-btns button {
+  border-radius: 999px; border: 0; background: var(--m-secondary-container, #4a4458); color: var(--m-on-secondary-container, #e8def8);
+}
+body[data-theme="material"] .btn-hot, body[data-theme="material"] .power[aria-pressed="true"], body[data-theme="material"] .look-btns button.active {
+  background: var(--volt); color: var(--m-on-primary, #381e72);
+}
+body[data-theme="material"] .card { border: 0; border-radius: 24px; background: var(--raised); }
+body[data-theme="material"] .meter { border-radius: 20px; border: 0; }

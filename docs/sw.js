@@ -1,7 +1,7 @@
 // Keeps BLOWOUT working offline: fresh copy from the network when there is one,
 // otherwise the copy saved last time.
-const CACHE = 'blowout-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'blowout-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'looks.css', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

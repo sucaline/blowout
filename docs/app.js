@@ -244,7 +244,7 @@ function draw() {
       for (let b = from; b < to && b < freqData.length; b++) if (freqData[b] > top) top = freqData[b];
       const level = top / 255;
       const bh = Math.max(dpr, level * h);
-      g.fillStyle = level > 0.9 ? '#ff3d1f' : level > 0.7 ? '#ff9a1f' : '#ffd600';
+      g.fillStyle = level > 0.9 ? barColors.hot : level > 0.7 ? barColors.mid : barColors.low;
       g.fillRect(i * (bw + gap), h - bh, bw, bh);
     }
 
@@ -273,3 +273,59 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 render();
 renderTransport();
 requestAnimationFrame(draw);
+
+// ---------- looks and settings ----------
+let barColors = { hot: '#ff3d1f', mid: '#ff9a1f', low: '#ffd600' };
+const store = (k, v) => {
+  try {
+    if (v === undefined) return localStorage.getItem(k);
+    localStorage.setItem(k, v);
+  } catch { /* storage can be blocked; settings just won't stick */ }
+  return null;
+};
+function applyLook(name) {
+  if (name !== 'starrail' && name !== 'material') name = 'blowout';
+  document.body.dataset.theme = name;
+  store('look', name);
+  for (const b of document.querySelectorAll('#look button')) b.classList.toggle('active', b.dataset.theme === name);
+  const css = getComputedStyle(document.body);
+  const pick = (v, d) => css.getPropertyValue(v).trim() || d;
+  barColors = { hot: pick('--hot', '#ff3d1f'), mid: pick('--mid', '#ff9a1f'), low: pick('--volt', '#ffd600') };
+}
+function applyAccent(hex) {
+  // Material 3 colors worked out from one hue (a simple stand-in for Google's tonal palettes).
+  const n = parseInt(hex.slice(1), 16);
+  const [R, G, B] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+  const max = Math.max(R, G, B);
+  const d = max - Math.min(R, G, B);
+  let h = 0;
+  if (d) h = max === R ? ((G - B) / d) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
+  h = Math.round((h * 60 + 360) % 360);
+  const c = (hue, s, l) => `hsl(${(hue + 360) % 360} ${s}% ${l}%)`;
+  const vars = {
+    '--m-primary': c(h, 85, 82), '--m-on-primary': c(h, 60, 20), '--m-secondary-container': c(h, 18, 28),
+    '--m-on-secondary-container': c(h, 30, 90), '--m-tertiary': c(h + 55, 60, 80), '--m-surface': c(h, 12, 8),
+    '--m-surface-1': c(h, 10, 12), '--m-surface-3': c(h, 8, 20), '--m-on-surface': c(h, 15, 90),
+    '--m-on-surface-variant': c(h, 10, 75), '--m-outline-variant': c(h, 8, 28),
+  };
+  for (const [k, val] of Object.entries(vars)) document.body.style.setProperty(k, val);
+  store('accent', hex);
+  document.getElementById('accent').value = hex;
+  applyLook(document.body.dataset.theme);
+}
+for (const b of document.querySelectorAll('#look button')) b.addEventListener('click', () => applyLook(b.dataset.theme));
+document.getElementById('accent').addEventListener('input', (e) => applyAccent(e.target.value));
+const calmBtn = document.getElementById('set-calm');
+const showCalm = () => {
+  const on = store('calm') === 'on';
+  calmBtn.setAttribute('aria-checked', on);
+  document.body.classList.toggle('calm', on);
+};
+calmBtn.addEventListener('click', () => { store('calm', store('calm') === 'on' ? 'off' : 'on'); showCalm(); });
+document.getElementById('set-reset').addEventListener('click', () => {
+  try { localStorage.clear(); } catch { /* nothing to clear */ }
+  location.reload();
+});
+showCalm();
+applyAccent(store('accent') || '#6750a4');
+applyLook(store('look'));
