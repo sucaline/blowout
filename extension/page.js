@@ -126,7 +126,7 @@
   const tapMode = Boolean(window.__blowoutForceTap || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.blowout));
   const tapSegs = new Map(); // start time in ms -> { start, dur, frames, pre, state, buffer, off, st }
   const tapState = { el: null, epoch: null, sources: new Set() };
-  const tapStats = { codec: '', pieces: 0, bad: 0, resyncs: 0, hooks: 0, sbs: 0, appends: 0, mime: '' };
+  const tapStats = { codec: '', pieces: 0, bad: 0, resyncs: 0, hooks: 0, sbs: 0, appends: 0, mime: '', timeouts: 0, clears: 0, fallbacks: 0, tokens: 0 };
   const sbState = new WeakMap();
   const nativeMuted = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
   const muteInfo = new WeakMap();
@@ -277,6 +277,9 @@
 
   function tapDecode(rec) {
     rec.state = 'decoding';
+    rec.at = Date.now();
+    rec.tries = (rec.tries || 0) + 1;
+    const token = rec.token = ++tapStats.tokens;
     const parts = [];
     let total = 0;
     for (const frame of [...rec.pre, ...rec.frames]) {
@@ -288,15 +291,15 @@
     let o = 0;
     for (const part of parts) { bytes.set(part, o); o += part.length; }
     ctx.decodeAudioData(bytes.buffer).then((buffer) => {
+      if (rec.token !== token) return; // gave up on this attempt already
       rec.buffer = buffer;
       rec.off = Math.max(0, buffer.duration - rec.dur); // line up by the end: the start has the warm-up
-      rec.frames = null;
-      rec.pre = null;
       rec.state = 'ready';
     }, (e) => {
-      rec.state = 'bad';
-      tapStats.bad++;
+      if (rec.token !== token) return;
       diag.tap = 'decode ' + String((e && e.name) || e);
+      rec.state = rec.tries >= 3 ? 'bad' : 'new'; // try again a couple of times
+      if (rec.state === 'bad') tapStats.bad++;
     });
   }
 
@@ -340,8 +343,7 @@
     if (!ctx) { try { build(); } catch { return; } }
     if (ctx.state !== 'running') { ctx.resume().catch(() => {}); tapRelease(); return; } // never mute unless the copy can play
     if (tapState.el !== el) { tapRelease(); tapState.el = el; }
-    const info = tapMute(el, true);
-    tapGain.gain.value = info.page ? 0 : (el.volume === undefined ? 1 : el.volume);
+    tapGain.gain.value = el.muted ? 0 : (el.volume === undefined ? 1 : el.volume); // el.muted is the page's own wish
 
     const T = el.currentTime;
     tapPump(T);
@@ -361,6 +363,7 @@
       const end = rec.start + rec.dur;
       if (end <= epoch.upTo + 0.001) continue;
       if (rec.start >= horizon) break;
+      if (rec.state === 'bad') continue; // a hole: carry on after it
       if (rec.state !== 'ready') break; // wait for the decoder; the order keeps the pieces joined up
       const from = Math.max(rec.start, epoch.upTo);
       let when = epoch.ctxT0 + (from - epoch.mediaT0) / rate;
@@ -383,13 +386,40 @@
       source.onended = () => tapState.sources.delete(source);
       epoch.upTo = end;
     }
+
+    // Only silence the original while the copy really covers what is playing. If it runs dry
+    // (a piece missing, still decoding, or a codec it cannot read), the original takes over
+    // again instead of leaving silence, and the copy takes back over when it catches up.
+    if (epoch.upTo > T + 0.4) {
+      tapState.gapSince = 0;
+      tapState.fallback = false;
+      tapMute(el, true);
+    } else {
+      if (!tapState.gapSince) tapState.gapSince = Date.now();
+      if (Date.now() - tapState.gapSince > 1200) {
+        if (!tapState.fallback) tapStats.fallbacks++;
+        tapState.fallback = true;
+        tapMute(el, false);
+      }
+    }
   }
 
   function tapPump(T) {
+    const now = Date.now();
     let running = 0;
     for (const [key, rec] of tapSegs) {
-      if (rec.start + rec.dur < T - 30 || rec.start > T + 300) tapSegs.delete(key); // long played, or far off
-      else if (rec.state === 'decoding') running++;
+      if (rec.start + rec.dur < T - 600 || rec.start > T + 600) { tapSegs.delete(key); continue; }
+      if (rec.state === 'decoding') {
+        if (now - rec.at > 5000) { // the browser never answered: try again, a few times
+          rec.token = 0;
+          rec.state = rec.tries >= 3 ? 'bad' : 'new';
+          tapStats.timeouts++;
+          if (rec.state === 'bad') tapStats.bad++;
+        } else running++;
+      } else if (rec.state === 'ready' && (rec.start + rec.dur < T - 15 || rec.start > T + 60)) {
+        rec.buffer = null; // keep the small encoded copy; decode again if we come back to it
+        rec.state = 'new';
+      }
     }
     const todo = [...tapSegs.values()]
       .filter((rec) => rec.state === 'new' && rec.start + rec.dur > T - 1 && rec.start < T + 45)
@@ -405,7 +435,7 @@
     if (!tapMode) return 'tap n/a';
     let ready = 0;
     for (const rec of tapSegs.values()) if (rec.state === 'ready') ready++;
-    return 'tap ' + (tapState.sources.size ? 'ON' : 'off') + ' ' + ready + '/' + tapSegs.size + ' bad' + tapStats.bad + ' resync' + tapStats.resyncs + ' ' + (tapStats.codec || 'no-audio-seen') + ' [hooks' + tapStats.hooks + ' audioSB' + tapStats.sbs + ' appends' + tapStats.appends + ' ' + tapStats.mime + ']' + (diag.tap ? ' ERR ' + diag.tap : '');
+    return 'tap ' + (tapState.sources.size ? 'ON' : 'off') + ' ' + ready + '/' + tapSegs.size + ' bad' + tapStats.bad + ' resync' + tapStats.resyncs + ' timeouts' + tapStats.timeouts + ' clears' + tapStats.clears + ' fallbacks' + tapStats.fallbacks + (tapState.fallback ? ' ORIGINAL' : '') + ' ' + (tapStats.codec || 'no-audio-seen') + ' [hooks' + tapStats.hooks + ' audioSB' + tapStats.sbs + ' appends' + tapStats.appends + ' ' + tapStats.mime + ']' + (diag.tap ? ' ERR ' + diag.tap : '');
   };
 
   // iPhone Safari only exposes ManagedMediaSource (not MediaSource), and the methods may live on
@@ -454,6 +484,7 @@
           if (String(mime).toLowerCase().startsWith('audio/')) {
             sbState.set(sb, { mime: String(mime), ready: false });
             tapStats.sbs++;
+            if (tapSegs.size) { tapSegs.clear(); tapStop(); tapStats.clears++; } // a new song: forget the last one
             tapStats.mime = String(mime).slice(0, 40);
           }
           wrapBuffer(Object.getPrototypeOf(sb)); // whichever class the page really got
