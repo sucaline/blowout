@@ -126,7 +126,7 @@
   const tapMode = Boolean(window.__blowoutForceTap || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.blowout));
   const tapSegs = new Map(); // start time in ms -> { start, dur, frames, pre, state, buffer, off, st }
   const tapState = { el: null, epoch: null, sources: new Set() };
-  const tapStats = { codec: '', pieces: 0, bad: 0, resyncs: 0 };
+  const tapStats = { codec: '', pieces: 0, bad: 0, resyncs: 0, hooks: 0, sbs: 0, appends: 0, mime: '' };
   const sbState = new WeakMap();
   const nativeMuted = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
   const muteInfo = new WeakMap();
@@ -405,46 +405,68 @@
     if (!tapMode) return 'tap n/a';
     let ready = 0;
     for (const rec of tapSegs.values()) if (rec.state === 'ready') ready++;
-    return 'tap ' + (tapState.sources.size ? 'ON' : 'off') + ' ' + ready + '/' + tapSegs.size + ' bad' + tapStats.bad + ' resync' + tapStats.resyncs + ' ' + (tapStats.codec || 'no-audio-seen') + (diag.tap ? ' ERR ' + diag.tap : '');
+    return 'tap ' + (tapState.sources.size ? 'ON' : 'off') + ' ' + ready + '/' + tapSegs.size + ' bad' + tapStats.bad + ' resync' + tapStats.resyncs + ' ' + (tapStats.codec || 'no-audio-seen') + ' [hooks' + tapStats.hooks + ' audioSB' + tapStats.sbs + ' appends' + tapStats.appends + ' ' + tapStats.mime + ']' + (diag.tap ? ' ERR ' + diag.tap : '');
   };
 
-  if (tapMode && window.MediaSource && window.SourceBuffer) {
-    const wrapAdd = (proto) => {
-      if (!proto || !Object.prototype.hasOwnProperty.call(proto, 'addSourceBuffer')) return;
-      const add = proto.addSourceBuffer;
-      proto.addSourceBuffer = function (mime) {
-        const sb = add.apply(this, arguments);
-        if (/^audio\//i.test(String(mime))) sbState.set(sb, { mime: String(mime), ready: false });
-        return sb;
-      };
+  // iPhone Safari only exposes ManagedMediaSource (not MediaSource), and the methods may live on
+  // a parent prototype, so find where each one really is and wrap it there.
+  const mediaSources = [window.MediaSource, window.ManagedMediaSource].filter(Boolean);
+  const sourceBuffers = [window.SourceBuffer, window.ManagedSourceBuffer].filter(Boolean);
+  if (tapMode && mediaSources.length) {
+    const ownerOf = (proto, name) => {
+      for (let p = proto; p; p = Object.getPrototypeOf(p)) {
+        if (Object.prototype.hasOwnProperty.call(p, name)) return p;
+      }
+      return null;
     };
-    wrapAdd(MediaSource.prototype);
-    wrapAdd(window.ManagedMediaSource && ManagedMediaSource.prototype);
-    const append = SourceBuffer.prototype.appendBuffer;
-    SourceBuffer.prototype.appendBuffer = function (data) {
-      try {
-        const st = sbState.get(this);
-        if (st) tapIngest(this, st, data);
-      } catch (e) { diag.tap = 'ingest ' + String((e && e.message) || e).slice(0, 60); }
-      return append.apply(this, arguments);
+    const done = [];
+    const wrap = (proto, name, make) => {
+      const owner = ownerOf(proto, name);
+      if (!owner || done.some((d) => d[0] === owner && d[1] === name)) return;
+      done.push([owner, name]);
+      owner[name] = make(owner[name]);
+      tapStats.hooks = done.length;
     };
-    // When the page throws away part of what it buffered (seeking, an ad ending), so do we.
-    const remove = SourceBuffer.prototype.remove;
-    SourceBuffer.prototype.remove = function (from, to) {
-      try {
-        if (sbState.has(this)) {
-          for (const [key, rec] of tapSegs) {
-            if (rec.start + rec.dur > from && rec.start < to) tapSegs.delete(key);
+    const wrapBuffer = (proto) => {
+      wrap(proto, 'appendBuffer', (append) => function (data) {
+        try {
+          const st = sbState.get(this);
+          if (st) { tapStats.appends++; tapIngest(this, st, data); }
+        } catch (e) { diag.tap = 'ingest ' + String((e && e.message) || e).slice(0, 60); }
+        return append.apply(this, arguments);
+      });
+      // When the page throws away part of what it buffered (seeking, an ad ending), so do we.
+      wrap(proto, 'remove', (remove) => function (from, to) {
+        try {
+          if (sbState.has(this)) {
+            for (const [key, rec] of tapSegs) {
+              if (rec.start + rec.dur > from && rec.start < to) tapSegs.delete(key);
+            }
           }
-        }
-      } catch { /* never get in the page's way */ }
-      return remove.apply(this, arguments);
+        } catch { /* never get in the page's way */ }
+        return remove.apply(this, arguments);
+      });
     };
-    // Ask the site for MP4 audio (AAC), which the tap can read, rather than WebM.
-    const supported = MediaSource.isTypeSupported;
-    MediaSource.isTypeSupported = function (type) {
-      return /webm/i.test(String(type)) ? false : supported.apply(this, arguments);
-    };
+    for (const ctor of mediaSources) {
+      wrap(ctor.prototype, 'addSourceBuffer', (add) => function (mime) {
+        const sb = add.apply(this, arguments);
+        try {
+          if (String(mime).toLowerCase().startsWith('audio/')) {
+            sbState.set(sb, { mime: String(mime), ready: false });
+            tapStats.sbs++;
+            tapStats.mime = String(mime).slice(0, 40);
+          }
+          wrapBuffer(Object.getPrototypeOf(sb)); // whichever class the page really got
+        } catch { /* never get in the page's way */ }
+        return sb;
+      });
+      // Ask the site for MP4 audio (AAC), which the tap can read, rather than WebM.
+      const supported = ctor.isTypeSupported;
+      ctor.isTypeSupported = function (type) {
+        return /webm/i.test(String(type)) ? false : supported.apply(this, arguments);
+      };
+    }
+    for (const ctor of sourceBuffers) wrapBuffer(ctor.prototype);
     const canPlay = HTMLMediaElement.prototype.canPlayType;
     HTMLMediaElement.prototype.canPlayType = function (type) {
       return /webm/i.test(String(type)) ? '' : canPlay.apply(this, arguments);
