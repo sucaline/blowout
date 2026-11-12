@@ -350,6 +350,17 @@
     card.append(pitch);
     const note = el('p', { className: 'note' });
     card.append(clips, note);
+    // In the iPhone app only: a button that asks the app to switch to a playback mode iOS can
+    // process (the page is told it has no MediaSource, so it streams the way Safari natively does).
+    const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.blowout;
+    if (bridge) {
+      const compat = el('button', {
+        textContent: window.MediaSource || window.ManagedMediaSource ? 'COMPAT MODE: OFF (TAP IF BOOST DOES NOTHING)' : 'COMPAT MODE: ON (TAP TO TURN OFF)',
+        onclick: () => bridge.postMessage({ compat: 'toggle' }),
+      });
+      compat.style.cssText = 'width:100%;margin-bottom:8px;';
+      card.append(compat);
+    }
     // Phones only: a one-line status of the audio engine, for when boosting does nothing.
     const debug = window.__blowoutBookmarklet ? el('p', { className: 'note' }) : null;
     if (debug) {
@@ -429,6 +440,12 @@
       else if (action === 'prev') act('previoustrack');
       else if (action === 'seek') {
         if (!act('seekto', time) && el) el.currentTime = time;
+      } else if (action === 'resume') {
+        // Only ever starts things: the iPhone app asks for this after going to the background.
+        const target = el || [...known].find((candidate) => candidate.currentTime > 0);
+        if (target && target.paused && !target.ended) {
+          if (!act('play')) target.play().catch(() => {});
+        }
       } else if (action === 'toggle' && el) {
         if (act(el.paused ? 'play' : 'pause')) return;
         if (el.paused) el.play().catch(() => {});

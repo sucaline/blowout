@@ -32,6 +32,7 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     @Published var track: Track?
 
     private var observers: [NSKeyValueObservation] = []
+    private var wasPlaying = false
 
     override init() {
         let config = WKWebViewConfiguration()
@@ -45,7 +46,10 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
 
         controller.add(self, name: "blowout")
         installScript()
-        NotificationCenter.default.addObserver(self, selector: #selector(wentToBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(aboutToLeave), name: UIApplication.willResignActiveNotification, object: nil)
+        center.addObserver(self, selector: #selector(wentToBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        center.addObserver(self, selector: #selector(cameBack), name: UIApplication.didBecomeActiveNotification, object: nil)
 
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -96,6 +100,9 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
           var stop = function (e) { e.stopImmediatePropagation(); };
           window.addEventListener('visibilitychange', stop, true);
           document.addEventListener('visibilitychange', stop, true);
+          window.addEventListener('blur', stop, true);
+          window.addEventListener('freeze', stop, true);
+          try { document.hasFocus = function () { return true; }; } catch (e) {}
           window.__bwPlaying = false;
           document.addEventListener('play', function () { window.__bwPlaying = true; }, true);
           document.addEventListener('pause', function () {
@@ -115,6 +122,10 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "blowout", let d = message.body as? [String: Any] else { return }
+        if d["compat"] != nil { // the panel's COMPAT MODE button
+            toggleCompat()
+            return
+        }
         func number(_ key: String) -> Double { (d[key] as? NSNumber)?.doubleValue ?? 0 }
         let rate = number("rate")
         track = Track(
@@ -182,23 +193,25 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
 
     /// The page is told it is always visible (see engineScript) so it keeps playing. If it
     /// pauses anyway when the app goes to the background, press play again for it.
+    @objc private func aboutToLeave() {
+        // Remember whether a song was playing before iOS pauses it for us.
+        if let t = track { wasPlaying = !t.paused && Date().timeIntervalSince(t.at) < 3 } else { wasPlaying = false }
+    }
+
+    @objc private func cameBack() {
+        wasPlaying = false
+    }
+
     @objc private func wentToBackground() {
+        guard wasPlaying else { return }
         try? AVAudioSession.sharedInstance().setActive(true)
-        for delay in [0.7, 2.5, 6.0] {
+        for delay in [0.4, 1.0, 2.0, 4.0, 8.0, 15.0] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.webView.evaluateJavaScript(Browser.resumeScript, completionHandler: nil)
+                guard let self = self, self.wasPlaying else { return }
+                self.control("resume") // only ever starts a paused player
             }
         }
     }
-
-    private static let resumeScript = """
-    (function () {
-      if (!window.__bwPlaying) return;
-      document.querySelectorAll('video, audio').forEach(function (el) {
-        if (el.paused && el.readyState > 0) el.play().catch(function () {});
-      });
-    })();
-    """
 
     func toggleDesktop() {
         desktop.toggle()
