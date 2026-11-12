@@ -77,6 +77,14 @@ that reports a song (including plain YouTube); OPEN PAGE goes back to the site.
   lyrics), then lyrics.ovh (plain text, no timing). Turn lookups off in Settings to send nothing.
 - Files only have their name to go on, so name them `Artist - Song.mp3` for lyrics to be found.
 
+### Standalone extension (no app needed, also for iPhone browsers)
+
+The extension also works on its own. On YouTube Music, YouTube or Spotify in Chrome, Edge or any
+browser that takes Chrome extensions (on iPhone, Orion does), a **BLOWOUT** button sits in the corner of
+the page. Click it for presets, bass, loud, clip style and output volume. If the BLOWOUT desktop app is
+running it links up and takes over, with lyrics and the full controls. iPhone Safari and Chrome do not
+allow extensions like this; Orion is the one that does (not tested by me).
+
 ### Signing in, and using your real Chrome (BLOWOUT Link)
 
 Spotify: sign in on Spotify's own page inside the app. Your details go straight to Spotify.

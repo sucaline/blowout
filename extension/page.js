@@ -4,7 +4,9 @@
 //   media ─► low-shelf (bass) ─► drive (loudness) ─► clipper ─► output volume ─► speakers
 //
 // Settings arrive from the BLOWOUT app; the song, position and meter go back to it.
-// Until the app sends settings, the page's audio is left completely alone.
+// Until the app sends settings (or you switch the on-page panel on), the page's audio is left
+// completely alone. With no app, the little BLOWOUT panel in the corner of the page does the job
+// on its own, which is also how this works on phones and other browsers without the app.
 (() => {
   if (window.__blowoutLink) return;
   window.__blowoutLink = true;
@@ -189,6 +191,127 @@
     });
   }, 250);
 
+  // ---------- the on-page panel (works without the app) ----------
+  const PRESETS = {
+    warm: { bass: 8, freq: 100, loud: 3, clip: 'soft' },
+    boosted: { bass: 16, freq: 120, loud: 9, clip: 'soft' },
+    fried: { bass: 26, freq: 140, loud: 20, clip: 'hard' },
+    earrape: { bass: 40, freq: 180, loud: 40, clip: 'square' },
+  };
+  let appLinked = false;
+  let local = { ...NEUTRAL };
+  try {
+    local = { ...NEUTRAL, ...PRESETS.fried, out: 0.5, ...JSON.parse(localStorage.getItem('blowout-panel')) };
+  } catch { /* first visit */ }
+  let panelState = () => {};
+
+  function setLocal(changes) {
+    local = { ...local, ...changes };
+    try { localStorage.setItem('blowout-panel', JSON.stringify(local)); } catch { /* storage blocked */ }
+    if (appLinked) return;
+    params = local;
+    if (params.on && !armed) {
+      armed = true;
+      for (const el of known) hook(el);
+    }
+    apply(false);
+    panelState();
+  }
+
+  function buildPanel() {
+    if (document.getElementById('blowout-panel-host')) return;
+    const host = document.createElement('div');
+    host.id = 'blowout-panel-host';
+    host.style.cssText = 'position:fixed;right:16px;bottom:96px;z-index:2147483647;';
+    const root = host.attachShadow({ mode: 'open' });
+    // Built with DOM calls, not innerHTML: these sites block HTML strings (Trusted Types).
+    const el = (tag, props = {}, ...kids) => {
+      const node = Object.assign(document.createElement(tag), props);
+      node.append(...kids);
+      return node;
+    };
+    const style = el('style', { textContent: `
+      :host { all: initial; font: 13px/1.4 system-ui, "Segoe UI", sans-serif; }
+      .pill { background:#ff3d1f; color:#1a0500; border:0; border-radius:999px; padding:9px 16px; font:800 13px system-ui; letter-spacing:1.5px; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,.5); }
+      .pill.live { background:#ffd600; color:#171300; }
+      .card { width:264px; background:#0a0a0b; color:#f3f0e8; border:1px solid #2a2a30; border-radius:10px; padding:12px; box-shadow:0 10px 36px rgba(0,0,0,.65); }
+      .row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+      .title { font:italic 800 18px system-ui; letter-spacing:1px; } .title span { color:#ff3d1f; }
+      button { font:700 11px system-ui; letter-spacing:1px; color:#f3f0e8; background:#1b1b1f; border:1px solid #2a2a30; border-radius:4px; padding:7px 9px; cursor:pointer; }
+      button.on { background:#ffd600; border-color:#ffd600; color:#171300; }
+      .presets { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin-bottom:10px; }
+      label { display:block; margin-bottom:8px; color:#8d8a84; font-size:11px; letter-spacing:1px; }
+      label b { float:right; color:#ffd600; font:11px ui-monospace,monospace; }
+      input[type=range] { width:100%; accent-color:#ffd600; margin:2px 0 0; }
+      .clips { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-bottom:8px; }
+      .note { margin:0; color:#8d8a84; font-size:11px; }
+    ` });
+
+    const pill = el('button', { className: 'pill', textContent: 'BLOWOUT' });
+    const card = el('div', { className: 'card', hidden: true });
+    const power = el('button', { textContent: 'BOOST: OFF' });
+    const close = el('button', { textContent: 'X', title: 'Close' });
+    card.append(
+      el('div', { className: 'row' }, el('div', { className: 'title' }, 'BLOW', el('span', {}, 'OUT')), power, close),
+    );
+    const presets = el('div', { className: 'presets' });
+    for (const name of Object.keys(PRESETS)) {
+      presets.append(el('button', { textContent: name.toUpperCase(), onclick: () => setLocal({ on: true, ...PRESETS[name] }) }));
+    }
+    card.append(presets);
+
+    const sliders = {};
+    const slider = (key, label, min, max, scale = 1) => {
+      const out = el('b');
+      const input = el('input', { type: 'range', min, max, step: 1 });
+      input.oninput = () => setLocal({ [key]: Number(input.value) / scale });
+      sliders[key] = { input, out, scale };
+      card.append(el('label', {}, label, out, input));
+    };
+    slider('bass', 'BASS', 0, 40);
+    slider('loud', 'LOUD', 0, 40);
+    slider('out', 'OUTPUT VOLUME', 0, 100, 100);
+
+    const clips = el('div', { className: 'clips' });
+    const clipBtns = {};
+    for (const style of ['soft', 'hard', 'square']) {
+      clipBtns[style] = el('button', { textContent: style.toUpperCase(), onclick: () => setLocal({ clip: style }) });
+      clips.append(clipBtns[style]);
+    }
+    const note = el('p', { className: 'note' });
+    card.append(clips, note);
+
+    power.onclick = () => setLocal({ on: !local.on });
+    pill.onclick = () => { card.hidden = false; pill.hidden = true; };
+    close.onclick = () => { card.hidden = true; pill.hidden = false; };
+
+    panelState = () => {
+      const shown = appLinked ? params : local;
+      host.style.display = appLinked ? 'none' : '';
+      power.textContent = shown.on ? 'BOOST: ON' : 'BOOST: OFF';
+      power.classList.toggle('on', shown.on);
+      pill.classList.toggle('live', shown.on);
+      for (const [key, { input, out, scale }] of Object.entries(sliders)) {
+        input.value = Math.round(shown[key] * scale);
+        out.textContent = key === 'out' ? Math.round(shown[key] * 100) + '%' : '+' + shown[key] + ' dB';
+      }
+      for (const [style, btn] of Object.entries(clipBtns)) btn.classList.toggle('on', shown.clip === style);
+      note.textContent = 'Clipping is a feature. Start with output volume low.';
+    };
+    root.append(style, pill, card);
+    document.documentElement.append(host);
+    panelState();
+  }
+
+  // Wait a moment: if the BLOWOUT app is running it links first and the panel stays hidden.
+  const startPanel = () => setTimeout(() => {
+    buildPanel();
+    // Come back the way you left it: boost stays on across pages if you left it on.
+    if (!appLinked && local.on) setLocal({});
+  }, 2500);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startPanel);
+  else startPanel();
+
   // ---------- from the app ----------
   document.addEventListener('blowout:in', (event) => {
     let message;
@@ -198,12 +321,15 @@
       return;
     }
     if (message.type === 'params') {
-      params = message.params || NEUTRAL; // null = the app went away: stop boosting
+      // null = the app went away: fall back to the on-page panel's own settings
+      appLinked = Boolean(message.params);
+      params = message.params || local;
       if (params.on && !armed) {
         armed = true;
         for (const el of known) hook(el);
       }
       apply(false);
+      panelState();
     } else if (message.type === 'pause') {
       for (const el of known) el.pause();
     } else if (message.type === 'control') {
