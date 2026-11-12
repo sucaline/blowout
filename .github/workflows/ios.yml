@@ -1,0 +1,65 @@
+name: iOS app
+
+# Builds an unsigned BLOWOUT .ipa on a Mac runner (free for public repos). Sideload it with
+# Sideloadly or AltStore, which sign it with your own Apple ID.
+#
+# Run it by hand to also attach the .ipa to a release:
+#   gh workflow run ios.yml -f release_tag=v1.3.1
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to attach the .ipa to (leave empty to only build)
+        required: false
+        default: ''
+  push:
+    paths:
+      - 'ios/**'
+      - 'extension/page.js'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build (unsigned)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild -project BLOWOUT.xcodeproj -scheme BLOWOUT -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tail -n 120
+
+      - name: Package the .ipa
+        working-directory: ios
+        run: |
+          VERSION=$(grep -m1 'MARKETING_VERSION' project.yml | sed 's/[^0-9.]//g')
+          rm -rf Payload && mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/BLOWOUT.app Payload/
+          zip -qry "BLOWOUT-iOS-$VERSION.ipa" Payload
+          ls -la *.ipa
+          echo "IPA=ios/BLOWOUT-iOS-$VERSION.ipa" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BLOWOUT-ipa
+          path: ${{ env.IPA }}
+
+      - name: Attach to the release
+        if: ${{ inputs.release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.release_tag }}" "$IPA" --clobber --repo "${{ github.repository }}"
