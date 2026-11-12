@@ -126,7 +126,7 @@
   const tapMode = Boolean(window.__blowoutForceTap || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.blowout));
   const tapSegs = new Map(); // start time in ms -> { start, dur, frames, pre, state, buffer, off, st }
   const tapState = { el: null, epoch: null, sources: new Set() };
-  const tapStats = { codec: '', pieces: 0, bad: 0, resyncs: 0, hooks: 0, sbs: 0, appends: 0, mime: '', timeouts: 0, clears: 0, fallbacks: 0, tokens: 0 };
+  const tapStats = { codec: '', pieces: 0, bad: 0, resyncs: 0, hooks: 0, sbs: 0, appends: 0, mime: '', timeouts: 0, clears: 0, fallbacks: 0, tokens: 0, stalls: 0, drift: 0, maxDrift: 0 };
   const sbState = new WeakMap();
   const nativeMuted = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
   const muteInfo = new WeakMap();
@@ -335,11 +335,30 @@
     tapStop();
   }
 
+  // Are the decoded pieces there, joined up, for the next `span` seconds from T?
+  function tapReady(T, span) {
+    let at = T;
+    for (const rec of [...tapSegs.values()].sort((a, b) => a.start - b.start)) {
+      if (rec.start + rec.dur <= at) continue;
+      if (rec.start > at + 0.05 || rec.state !== 'ready') return false;
+      at = rec.start + rec.dur;
+      if (at >= T + span) return true;
+    }
+    return false;
+  }
+  // Is there a piece that covers T at all, even if it is not decoded yet?
+  const tapHasPiece = (T) => [...tapSegs.values()].some((rec) => rec.start <= T + 0.3 && rec.start + rec.dur > T && rec.state !== 'bad');
+
   function tapSync() {
     if (!tapMode) return;
-    const el = playing();
+    const el = tapState.stalled && tapState.el ? tapState.el : playing(); // paused by us, still ours
     const eligible = el && params.on && tapSegs.size > 0 && /^blob:/.test(el.currentSrc || '');
-    if (!eligible) { tapRelease(); return; }
+    if (!eligible) {
+      if (tapState.stalled && tapState.el) { tapState.el.play().catch(() => {}); }
+      tapState.stalled = false;
+      tapRelease();
+      return;
+    }
     if (!ctx) { try { build(); } catch { return; } }
     if (ctx.state !== 'running') { ctx.resume().catch(() => {}); tapRelease(); return; } // never mute unless the copy can play
     if (tapState.el !== el) { tapRelease(); tapState.el = el; }
@@ -347,13 +366,28 @@
 
     const T = el.currentTime;
     tapPump(T);
+    if (tapState.stalled) {
+      // We paused the video to wait for the copy; carry on as soon as it is ready (or give up after 5s).
+      const ready = tapReady(T, 1.2);
+      if (ready || Date.now() - tapState.stalledAt > 5000) {
+        tapState.stalled = false;
+        tapState.gapSince = 0;
+        if (!ready) { tapState.fallback = true; tapState.noStallUntil = Date.now() + 8000; tapStats.fallbacks++; tapMute(el, false); }
+        el.play().catch(() => {});
+      }
+      return;
+    }
     if (el.paused || el.seeking || el.readyState < 2) { tapStop(); return; }
 
     const rate = el.playbackRate || 1;
     let epoch = tapState.epoch;
     if (epoch) {
       const expected = epoch.mediaT0 + (ctx.currentTime - epoch.ctxT0) * epoch.rate;
-      if (epoch.rate !== rate || Math.abs(expected - T) > 0.25) { tapStop(); epoch = null; tapStats.resyncs++; }
+      const drift = expected - T;
+      tapStats.drift = drift;
+      if (Math.abs(drift) > tapStats.maxDrift) tapStats.maxDrift = Math.abs(drift);
+      epoch.off = Math.abs(drift) > 0.25 ? (epoch.off || 0) + 1 : 0; // ignore a single odd reading
+      if (epoch.rate !== rate || epoch.off >= 3) { tapStop(); epoch = null; tapStats.resyncs++; }
     }
     // The copy starts a moment from now, by which time the video has moved on: start it there.
     if (!epoch) epoch = tapState.epoch = { ctxT0: ctx.currentTime + 0.06, mediaT0: T + 0.06 * rate, rate, upTo: T };
@@ -396,6 +430,15 @@
       tapMute(el, true);
     } else {
       if (!tapState.gapSince) tapState.gapSince = Date.now();
+      if (Date.now() > (tapState.noStallUntil || 0) && Date.now() - tapState.gapSince > 150 && tapHasPiece(T)) {
+        // The piece for right now is still being prepared: pause for a moment instead of playing it unboosted.
+        tapStop();
+        tapState.stalled = true;
+        tapState.stalledAt = Date.now();
+        tapStats.stalls++;
+        el.pause();
+        return;
+      }
       if (Date.now() - tapState.gapSince > 1200) {
         if (!tapState.fallback) tapStats.fallbacks++;
         tapState.fallback = true;
@@ -435,7 +478,7 @@
     if (!tapMode) return 'tap n/a';
     let ready = 0;
     for (const rec of tapSegs.values()) if (rec.state === 'ready') ready++;
-    return 'tap ' + (tapState.sources.size ? 'ON' : 'off') + ' ' + ready + '/' + tapSegs.size + ' bad' + tapStats.bad + ' resync' + tapStats.resyncs + ' timeouts' + tapStats.timeouts + ' clears' + tapStats.clears + ' fallbacks' + tapStats.fallbacks + (tapState.fallback ? ' ORIGINAL' : '') + ' ' + (tapStats.codec || 'no-audio-seen') + ' [hooks' + tapStats.hooks + ' audioSB' + tapStats.sbs + ' appends' + tapStats.appends + ' ' + tapStats.mime + ']' + (diag.tap ? ' ERR ' + diag.tap : '');
+    return 'tap ' + (tapState.sources.size ? 'ON' : 'off') + ' ' + ready + '/' + tapSegs.size + ' bad' + tapStats.bad + ' resync' + tapStats.resyncs + ' timeouts' + tapStats.timeouts + ' clears' + tapStats.clears + ' fallbacks' + tapStats.fallbacks + ' stalls' + tapStats.stalls + ' drift' + tapStats.drift.toFixed(2) + '/' + tapStats.maxDrift.toFixed(2) + (tapState.fallback ? ' ORIGINAL' : '') + (tapState.stalled ? ' WAITING' : '') + ' ' + (tapStats.codec || 'no-audio-seen') + ' [hooks' + tapStats.hooks + ' audioSB' + tapStats.sbs + ' appends' + tapStats.appends + ' ' + tapStats.mime + ']' + (diag.tap ? ' ERR ' + diag.tap : '');
   };
 
   // iPhone Safari only exposes ManagedMediaSource (not MediaSource), and the methods may live on
@@ -449,6 +492,7 @@
       }
       return null;
     };
+    const unreadable = /webm|opus|vorbis|flac|ac-3|ec-3|mp4a[.]40[.](5|29)([^0-9]|$)/i;
     const done = [];
     const wrap = (proto, name, make) => {
       const owner = ownerOf(proto, name);
@@ -491,16 +535,17 @@
         } catch { /* never get in the page's way */ }
         return sb;
       });
-      // Ask the site for MP4 audio (AAC), which the tap can read, rather than WebM.
+      // Only offer the audio the tap can read (plain AAC in MP4). Sites switch quality mid-song,
+      // and a switch to WebM, Opus or the small HE-AAC format would leave the copy with nothing.
       const supported = ctor.isTypeSupported;
       ctor.isTypeSupported = function (type) {
-        return /webm/i.test(String(type)) ? false : supported.apply(this, arguments);
+        return unreadable.test(String(type)) ? false : supported.apply(this, arguments);
       };
     }
     for (const ctor of sourceBuffers) wrapBuffer(ctor.prototype);
     const canPlay = HTMLMediaElement.prototype.canPlayType;
     HTMLMediaElement.prototype.canPlayType = function (type) {
-      return /webm/i.test(String(type)) ? '' : canPlay.apply(this, arguments);
+      return unreadable.test(String(type)) ? '' : canPlay.apply(this, arguments);
     };
     setInterval(tapSync, 120);
   }
