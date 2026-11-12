@@ -447,11 +447,18 @@
     }
   }
 
+  // Decoded sound is kept in memory for the whole song (everything the page has sent so far),
+  // so playback never waits on the decoder. Only if a very long song would use more than this
+  // much memory are the pieces farthest from the playing position dropped (and re-decoded later).
+  const TAP_RAM = 500 * 1024 * 1024;
+  const tapBytes = (rec) => (rec.buffer ? rec.buffer.length * rec.buffer.numberOfChannels * 4 : 0);
+
   function tapPump(T) {
     const now = Date.now();
     let running = 0;
+    let used = 0;
     for (const [key, rec] of tapSegs) {
-      if (rec.start + rec.dur < T - 600 || rec.start > T + 600) { tapSegs.delete(key); continue; }
+      if (rec.start + rec.dur < T - 1800 || rec.start > T + 1800) { tapSegs.delete(key); continue; }
       if (rec.state === 'decoding') {
         if (now - rec.at > 5000) { // the browser never answered: try again, a few times
           rec.token = 0;
@@ -459,16 +466,26 @@
           tapStats.timeouts++;
           if (rec.state === 'bad') tapStats.bad++;
         } else running++;
-      } else if (rec.state === 'ready' && (rec.start + rec.dur < T - 15 || rec.start > T + 60)) {
-        rec.buffer = null; // keep the small encoded copy; decode again if we come back to it
+      } else if (rec.state === 'ready') used += tapBytes(rec);
+    }
+    if (used > TAP_RAM) { // only for very long songs: let go of what is farthest from here
+      const far = [...tapSegs.values()].filter((rec) => rec.state === 'ready')
+        .sort((x, y) => Math.abs(y.start - T) - Math.abs(x.start - T));
+      for (const rec of far) {
+        if (used <= TAP_RAM * 0.8) break;
+        used -= tapBytes(rec);
+        rec.buffer = null; // the small encoded copy stays; it is decoded again if we come back to it
         rec.state = 'new';
+        rec.dropped = now;
       }
     }
+    // Decode everything not yet decoded: what is coming up first, then what is behind.
     const todo = [...tapSegs.values()]
-      .filter((rec) => rec.state === 'new' && rec.start + rec.dur > T - 1 && rec.start < T + 45)
-      .sort((a, b) => a.start - b.start);
+      .filter((rec) => rec.state === 'new' && !(rec.dropped && now - rec.dropped < 20000))
+      .sort((x, y) => (x.start + x.dur < T - 1 ? 1e7 - x.start : x.start) - (y.start + y.dur < T - 1 ? 1e7 - y.start : y.start));
     for (const rec of todo) {
-      if (running >= 2) break;
+      if (running >= 3) break;
+      if (used + 4e6 > TAP_RAM && Math.abs(rec.start - T) > 90) continue; // out of room: only near the playing position
       tapDecode(rec);
       running++;
     }
@@ -478,7 +495,7 @@
     if (!tapMode) return 'tap n/a';
     let ready = 0;
     for (const rec of tapSegs.values()) if (rec.state === 'ready') ready++;
-    return 'tap ' + (tapState.sources.size ? 'ON' : 'off') + ' ' + ready + '/' + tapSegs.size + ' bad' + tapStats.bad + ' resync' + tapStats.resyncs + ' timeouts' + tapStats.timeouts + ' clears' + tapStats.clears + ' fallbacks' + tapStats.fallbacks + ' stalls' + tapStats.stalls + ' drift' + tapStats.drift.toFixed(2) + '/' + tapStats.maxDrift.toFixed(2) + (tapState.fallback ? ' ORIGINAL' : '') + (tapState.stalled ? ' WAITING' : '') + ' ' + (tapStats.codec || 'no-audio-seen') + ' [hooks' + tapStats.hooks + ' audioSB' + tapStats.sbs + ' appends' + tapStats.appends + ' ' + tapStats.mime + ']' + (diag.tap ? ' ERR ' + diag.tap : '');
+    return 'tap ' + (tapState.sources.size ? 'ON' : 'off') + ' ' + ready + '/' + tapSegs.size + ' ' + Math.round([...tapSegs.values()].reduce((n, rec) => n + tapBytes(rec), 0) / 1048576) + 'MB bad' + tapStats.bad + ' resync' + tapStats.resyncs + ' timeouts' + tapStats.timeouts + ' clears' + tapStats.clears + ' fallbacks' + tapStats.fallbacks + ' stalls' + tapStats.stalls + ' drift' + tapStats.drift.toFixed(2) + '/' + tapStats.maxDrift.toFixed(2) + (tapState.fallback ? ' ORIGINAL' : '') + (tapState.stalled ? ' WAITING' : '') + ' ' + (tapStats.codec || 'no-audio-seen') + ' [hooks' + tapStats.hooks + ' audioSB' + tapStats.sbs + ' appends' + tapStats.appends + ' ' + tapStats.mime + ']' + (diag.tap ? ' ERR ' + diag.tap : '');
   };
 
   // iPhone Safari only exposes ManagedMediaSource (not MediaSource), and the methods may live on
