@@ -96,13 +96,16 @@
   }
 
 
+  const diag = { err: '' }; // what went wrong, shown in the panel on phones where nobody can open a console
+
   function hook(el) {
     if (hooked.has(el)) return;
     hooked.add(el);
-    if (!ctx) build();
     try {
+      if (!ctx) build();
       ctx.createMediaElementSource(el).connect(input);
-    } catch {
+    } catch (e) {
+      diag.err = String((e && e.name) || e) + ' ' + String((e && e.message) || '').slice(0, 60);
       return; // something else already owns this element's audio
     }
     const wake = () => { if (ctx.state !== 'running') ctx.resume().catch(() => {}); };
@@ -307,6 +310,23 @@
     card.append(pitch);
     const note = el('p', { className: 'note' });
     card.append(clips, note);
+    // Phones only: a one-line status of the audio engine, for when boosting does nothing.
+    const debug = window.__blowoutBookmarklet ? el('p', { className: 'note' }) : null;
+    if (debug) {
+      debug.style.cssText = 'font:10px ui-monospace,monospace;word-break:break-all;margin-top:8px;';
+      card.append(debug);
+      const report = () => {
+        let peak = 0;
+        if (ctx && preClip) {
+          const data = new Float32Array(preClip.fftSize);
+          preClip.getFloatTimeDomainData(data);
+          for (const v of data) if (Math.abs(v) > peak) peak = Math.abs(v);
+        }
+        const media = [...known].map((e) => e.tagName[0] + ':' + ((e.currentSrc || '').slice(0, 5) || (e.srcObject ? 'obj' : '-')) + ':' + (e.paused ? 'paused' : 'playing') + e.readyState).join(' ');
+        debug.textContent = 'engine: ctx ' + (ctx ? ctx.state + '@' + ctx.sampleRate : 'none') + ' | hooked ' + hooked.size + '/' + known.size + ' | peak ' + peak.toFixed(2) + ' | ' + (diag.err ? 'ERROR ' + diag.err : 'no error') + ' | ' + media;
+      };
+      setInterval(() => { if (!card.hidden) report(); }, 1000);
+    }
 
     power.onclick = () => setLocal({ on: !local.on });
     pill.onclick = () => { card.hidden = false; pill.hidden = true; };
