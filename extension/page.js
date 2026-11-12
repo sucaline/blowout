@@ -33,7 +33,7 @@
   };
 
   let ctx = null;
-  let input, shelf, drive, shaper, master, preClip, postClip, appliedCurve;
+  let input, shelf, drive, shaper, master, preClip, postClip, appliedCurve, tapGain;
   const known = new Set(); // every media element the page has shown or played
   const hooked = new Set(); // the ones already routed through the chain
   let armed = false; // becomes true the first time the app switches the boost on
@@ -41,6 +41,8 @@
   function build() {
     ctx = new AudioContext();
     input = ctx.createGain();
+    tapGain = ctx.createGain(); // where the iPhone tap plays in (see tapSync)
+    tapGain.connect(input);
     shelf = ctx.createBiquadFilter();
     shelf.type = 'lowshelf';
     drive = ctx.createGain();
@@ -100,6 +102,7 @@
 
   function hook(el) {
     if (hooked.has(el)) return;
+    if (tapMode && /^blob:/.test(el.currentSrc || '')) return; // streamed playback goes through the tap instead
     hooked.add(el);
     try {
       if (!ctx) build();
@@ -114,45 +117,350 @@
     wake();
   }
 
-  // iPhone: Safari's web view cannot always feed a playing video into the audio chain (it hands
-  // over silence while the song keeps playing normally, so boosting does nothing). If the chain
-  // stays silent for 3 seconds while something plays, switch to capturing the element's output
-  // as a stream instead; if that is silent too, put everything back the way it was.
-  let silentSince = 0;
-  let rescue = 0; // 0 = normal, 1 = trying capture, 2 = gave up
-  const captured = new Map(); // element -> the stream node feeding the chain
-  function watchSignal(peak) {
-    if (peak > 0.001) { silentSince = 0; if (rescue === 1) { rescue = 3; diag.cap = 'capture works'; } return; }
-    if (!silentSince) { silentSince = Date.now(); return; }
-    if (Date.now() - silentSince < 3000 || rescue === 2 || rescue === 3) return;
-    silentSince = 0;
-    if (rescue === 0) {
-      rescue = 1;
-      for (const el of hooked) {
-        if (el.paused || captured.has(el)) continue;
-        const grab = el.captureStream || el.webkitCaptureStream;
-        if (!grab) { diag.cap = 'no captureStream'; continue; }
-        try {
-          const tracks = grab.call(el).getAudioTracks();
-          if (!tracks.length) { diag.cap = 'capture has no audio'; continue; }
-          const node = ctx.createMediaStreamSource(new MediaStream(tracks));
-          node.connect(input);
-          el.muted = true; // the chain carries the sound now
-          captured.set(el, node);
-          diag.cap = 'capturing';
-        } catch (e) { diag.cap = 'capture failed ' + e.name; }
+  // ---------- iPhone: tap the stream ----------
+  // Safari's web view hands the audio chain silence for YouTube's streamed playback (it plays
+  // through a path Web Audio cannot reach), so boosting the <video> directly does nothing. In
+  // the iPhone app we instead read the audio pieces the page itself feeds to its player (AAC in
+  // MP4), decode them in memory, play that copy through the chain in step with the video, and
+  // mute the original. Nothing is saved or sent anywhere, and pieces are dropped after they play.
+  const tapMode = Boolean(window.__blowoutForceTap || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.blowout));
+  const tapSegs = new Map(); // start time in ms -> { start, dur, frames, pre, state, buffer, off, st }
+  const tapState = { el: null, epoch: null, sources: new Set() };
+  const tapStats = { codec: '', pieces: 0, bad: 0, resyncs: 0 };
+  const sbState = new WeakMap();
+  const nativeMuted = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
+  const muteInfo = new WeakMap();
+
+  const u32 = (u, o) => ((u[o] << 24) | (u[o + 1] << 16) | (u[o + 2] << 8) | u[o + 3]) >>> 0;
+  const s32 = (u, o) => (u[o] << 24) | (u[o + 1] << 16) | (u[o + 2] << 8) | u[o + 3];
+  const fourcc = (u, o) => String.fromCharCode(u[o], u[o + 1], u[o + 2], u[o + 3]);
+
+  function boxesIn(u, from, to) {
+    const out = [];
+    let o = from;
+    while (o + 8 <= to) {
+      let size = u32(u, o);
+      let head = 8;
+      if (size === 1) { size = u32(u, o + 12); head = 16; } // 64-bit size: the low half is plenty here
+      else if (size === 0) size = to - o;
+      if (size < head || o + size > to) break;
+      out.push({ type: fourcc(u, o + 4), start: o, end: o + size, body: o + head });
+      o += size;
+    }
+    return out;
+  }
+  const child = (u, box, type) => (box ? boxesIn(u, box.body, box.end).find((b) => b.type === type) : undefined);
+
+  function descriptor(u, o) {
+    const tag = u[o];
+    let len = 0;
+    let i = o + 1;
+    let n = 0;
+    let b;
+    do { b = u[i++]; len = (len << 7) | (b & 0x7f); n++; } while ((b & 0x80) && n < 4);
+    return { tag, len, body: i };
+  }
+
+  const AAC_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+
+  // The first append of a stream holds the track setup (moov): sample rate, channels, AAC type.
+  function parseInit(u, top, st) {
+    const moov = top.find((b) => b.type === 'moov');
+    const trak = child(u, moov, 'trak');
+    const mdia = child(u, trak, 'mdia');
+    const mdhd = child(u, mdia, 'mdhd');
+    const stsd = child(u, child(u, child(u, mdia, 'minf'), 'stbl'), 'stsd');
+    if (!mdhd || !stsd) return false;
+    st.timescale = u32(u, mdhd.body + (u[mdhd.body] === 1 ? 20 : 12));
+    const trex = child(u, child(u, moov, 'mvex'), 'trex');
+    st.defDur = trex ? u32(u, trex.body + 12) : 0;
+    st.defSize = trex ? u32(u, trex.body + 16) : 0;
+    const entry = boxesIn(u, stsd.body + 8, stsd.end)[0];
+    if (!entry) return false;
+    st.codec = entry.type;
+    const esds = boxesIn(u, entry.body + 28, entry.end).find((b) => b.type === 'esds');
+    if (entry.type !== 'mp4a' || !esds) { diag.tap = 'codec ' + entry.type + ' unsupported'; return false; }
+    const es = descriptor(u, esds.body + 4); // ES descriptor
+    const config = descriptor(u, es.body + 3); // decoder config
+    const specific = descriptor(u, config.body + 13); // AudioSpecificConfig
+    const a0 = u[specific.body];
+    const a1 = u[specific.body + 1];
+    st.aot = a0 >> 3;
+    st.freqIdx = ((a0 & 7) << 1) | (a1 >> 7);
+    st.chan = (a1 >> 3) & 15;
+    st.sr = AAC_RATES[st.freqIdx] || 0;
+    tapStats.codec = entry.type + ' aot' + st.aot + ' ' + st.sr + 'Hz ' + st.chan + 'ch';
+    if (st.aot !== 2 || !st.sr || !st.chan) { diag.tap = 'aac type ' + st.aot + ' unsupported'; return false; }
+    diag.tap = '';
+    st.tail = null;
+    return true;
+  }
+
+  // Each moof+mdat pair is a piece of the song: start time, length, and the raw AAC frames.
+  function parsePieces(u, top, st, sb) {
+    const out = [];
+    for (let i = 0; i < top.length; i++) {
+      const moof = top[i];
+      if (moof.type !== 'moof') continue;
+      const mdat = top.slice(i + 1).find((b) => b.type === 'mdat');
+      const traf = child(u, moof, 'traf');
+      const tfhd = child(u, traf, 'tfhd');
+      const tfdt = child(u, traf, 'tfdt');
+      if (!mdat || !tfhd || !tfdt) continue;
+      const flags = (u[tfhd.body + 1] << 16) | (u[tfhd.body + 2] << 8) | u[tfhd.body + 3];
+      let p = tfhd.body + 8;
+      let base = moof.start;
+      if (flags & 1) { base = u32(u, p + 4); p += 8; }
+      if (flags & 2) p += 4;
+      let defDur = st.defDur;
+      let defSize = st.defSize;
+      if (flags & 8) { defDur = u32(u, p); p += 4; }
+      if (flags & 0x10) { defSize = u32(u, p); p += 4; }
+      const decodeTime = u[tfdt.body] === 1 ? u32(u, tfdt.body + 4) * 4294967296 + u32(u, tfdt.body + 8) : u32(u, tfdt.body + 4);
+      const frames = [];
+      let ticks = 0;
+      let cursor = mdat.body;
+      for (const trun of boxesIn(u, traf.body, traf.end).filter((b) => b.type === 'trun')) {
+        const tf = (u[trun.body + 1] << 16) | (u[trun.body + 2] << 8) | u[trun.body + 3];
+        const count = u32(u, trun.body + 4);
+        let q = trun.body + 8;
+        if (tf & 1) { cursor = base + s32(u, q); q += 4; }
+        if (tf & 4) q += 4;
+        for (let k = 0; k < count; k++) {
+          let dur = defDur;
+          let size = defSize;
+          if (tf & 0x100) { dur = u32(u, q); q += 4; }
+          if (tf & 0x200) { size = u32(u, q); q += 4; }
+          if (tf & 0x400) q += 4;
+          if (tf & 0x800) q += 4;
+          if (cursor + size > u.length) break;
+          frames.push(u.subarray(cursor, cursor + size));
+          cursor += size;
+          ticks += dur;
+        }
       }
-      if (!captured.size) rescue = 2;
-    } else {
-      rescue = 2;
-      for (const [el, node] of captured) { try { node.disconnect(); } catch {} el.muted = false; }
-      captured.clear();
-      diag.cap = 'capture silent, undone';
+      if (!frames.length || !st.timescale) continue;
+      out.push({ start: decodeTime / st.timescale + (sb.timestampOffset || 0), dur: ticks / st.timescale, frames });
+    }
+    return out;
+  }
+
+  function tapIngest(sb, st, data) {
+    const view = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const u = view.slice(); // our own copy; the page is free to reuse its buffer
+    const top = boxesIn(u, 0, u.length);
+    if (top.some((b) => b.type === 'moov')) st.ready = parseInit(u, top, st);
+    if (!st.ready) return;
+    for (const rec of parsePieces(u, top, st, sb)) {
+      rec.st = st;
+      rec.state = 'new';
+      // A few frames from the end of the previous piece let the decoder warm up, so the join is clean.
+      rec.pre = st.tail && Math.abs(st.tail.end - rec.start) < 0.02 ? st.tail.frames : [];
+      st.tail = { end: rec.start + rec.dur, frames: rec.frames.slice(-3) };
+      tapSegs.set(Math.round(rec.start * 1000), rec);
+      tapStats.pieces++;
     }
   }
 
+  function adtsHeader(st, size) {
+    const len = size + 7;
+    const h = new Uint8Array(7);
+    h[0] = 0xff;
+    h[1] = 0xf1;
+    h[2] = ((st.aot - 1) << 6) | (st.freqIdx << 2) | (st.chan >> 2);
+    h[3] = ((st.chan & 3) << 6) | (len >> 11);
+    h[4] = (len >> 3) & 0xff;
+    h[5] = ((len & 7) << 5) | 0x1f;
+    h[6] = 0xfc;
+    return h;
+  }
+
+  function tapDecode(rec) {
+    rec.state = 'decoding';
+    const parts = [];
+    let total = 0;
+    for (const frame of [...rec.pre, ...rec.frames]) {
+      const header = adtsHeader(rec.st, frame.length);
+      parts.push(header, frame);
+      total += header.length + frame.length;
+    }
+    const bytes = new Uint8Array(total);
+    let o = 0;
+    for (const part of parts) { bytes.set(part, o); o += part.length; }
+    ctx.decodeAudioData(bytes.buffer).then((buffer) => {
+      rec.buffer = buffer;
+      rec.off = Math.max(0, buffer.duration - rec.dur); // line up by the end: the start has the warm-up
+      rec.frames = null;
+      rec.pre = null;
+      rec.state = 'ready';
+    }, (e) => {
+      rec.state = 'bad';
+      tapStats.bad++;
+      diag.tap = 'decode ' + String((e && e.name) || e);
+    });
+  }
+
+  function tapStop() {
+    for (const source of tapState.sources) {
+      try { source.onended = null; source.stop(); } catch { /* already finished */ }
+    }
+    tapState.sources.clear();
+    tapState.epoch = null;
+  }
+
+  // The original element is muted while the copy plays. The page can still mute it itself (the
+  // site's own mute button), and that is respected.
+  function tapMute(el, forced) {
+    let info = muteInfo.get(el);
+    if (!info) {
+      info = { page: nativeMuted.get.call(el), forced: false };
+      muteInfo.set(el, info);
+      Object.defineProperty(el, 'muted', {
+        configurable: true,
+        get: () => info.page,
+        set: (value) => { info.page = Boolean(value); nativeMuted.set.call(el, info.page || info.forced); },
+      });
+    }
+    info.forced = forced;
+    nativeMuted.set.call(el, info.page || info.forced);
+    return info;
+  }
+
+  function tapRelease() {
+    if (tapState.el) { try { tapMute(tapState.el, false); } catch { /* element gone */ } }
+    tapState.el = null;
+    tapStop();
+  }
+
+  function tapSync() {
+    if (!tapMode) return;
+    const el = playing();
+    const eligible = el && params.on && tapSegs.size > 0 && /^blob:/.test(el.currentSrc || '');
+    if (!eligible) { tapRelease(); return; }
+    if (!ctx) { try { build(); } catch { return; } }
+    if (ctx.state !== 'running') { ctx.resume().catch(() => {}); tapRelease(); return; } // never mute unless the copy can play
+    if (tapState.el !== el) { tapRelease(); tapState.el = el; }
+    const info = tapMute(el, true);
+    tapGain.gain.value = info.page ? 0 : (el.volume === undefined ? 1 : el.volume);
+
+    const T = el.currentTime;
+    tapPump(T);
+    if (el.paused || el.seeking || el.readyState < 2) { tapStop(); return; }
+
+    const rate = el.playbackRate || 1;
+    let epoch = tapState.epoch;
+    if (epoch) {
+      const expected = epoch.mediaT0 + (ctx.currentTime - epoch.ctxT0) * epoch.rate;
+      if (epoch.rate !== rate || Math.abs(expected - T) > 0.25) { tapStop(); epoch = null; tapStats.resyncs++; }
+    }
+    // The copy starts a moment from now, by which time the video has moved on: start it there.
+    if (!epoch) epoch = tapState.epoch = { ctxT0: ctx.currentTime + 0.06, mediaT0: T + 0.06 * rate, rate, upTo: T };
+
+    const horizon = T + 6;
+    for (const rec of [...tapSegs.values()].sort((a, b) => a.start - b.start)) {
+      const end = rec.start + rec.dur;
+      if (end <= epoch.upTo + 0.001) continue;
+      if (rec.start >= horizon) break;
+      if (rec.state !== 'ready') break; // wait for the decoder; the order keeps the pieces joined up
+      const from = Math.max(rec.start, epoch.upTo);
+      let when = epoch.ctxT0 + (from - epoch.mediaT0) / rate;
+      let offset = rec.off + (from - rec.start);
+      let length = end - from;
+      const now = ctx.currentTime + 0.01;
+      if (when < now) { // late: skip the part that should already have played
+        const skip = (now - when) * rate;
+        when = now;
+        offset += skip;
+        length -= skip;
+        if (length <= 0) { epoch.upTo = end; continue; }
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = rec.buffer;
+      source.playbackRate.value = rate;
+      source.connect(tapGain);
+      source.start(when, offset, length);
+      tapState.sources.add(source);
+      source.onended = () => tapState.sources.delete(source);
+      epoch.upTo = end;
+    }
+  }
+
+  function tapPump(T) {
+    let running = 0;
+    for (const [key, rec] of tapSegs) {
+      if (rec.start + rec.dur < T - 30 || rec.start > T + 300) tapSegs.delete(key); // long played, or far off
+      else if (rec.state === 'decoding') running++;
+    }
+    const todo = [...tapSegs.values()]
+      .filter((rec) => rec.state === 'new' && rec.start + rec.dur > T - 1 && rec.start < T + 45)
+      .sort((a, b) => a.start - b.start);
+    for (const rec of todo) {
+      if (running >= 2) break;
+      tapDecode(rec);
+      running++;
+    }
+  }
+
+  const tapReport = () => {
+    if (!tapMode) return 'tap n/a';
+    let ready = 0;
+    for (const rec of tapSegs.values()) if (rec.state === 'ready') ready++;
+    return 'tap ' + (tapState.sources.size ? 'ON' : 'off') + ' ' + ready + '/' + tapSegs.size + ' bad' + tapStats.bad + ' resync' + tapStats.resyncs + ' ' + (tapStats.codec || 'no-audio-seen') + (diag.tap ? ' ERR ' + diag.tap : '');
+  };
+
+  if (tapMode && window.MediaSource && window.SourceBuffer) {
+    const wrapAdd = (proto) => {
+      if (!proto || !Object.prototype.hasOwnProperty.call(proto, 'addSourceBuffer')) return;
+      const add = proto.addSourceBuffer;
+      proto.addSourceBuffer = function (mime) {
+        const sb = add.apply(this, arguments);
+        if (/^audio\//i.test(String(mime))) sbState.set(sb, { mime: String(mime), ready: false });
+        return sb;
+      };
+    };
+    wrapAdd(MediaSource.prototype);
+    wrapAdd(window.ManagedMediaSource && ManagedMediaSource.prototype);
+    const append = SourceBuffer.prototype.appendBuffer;
+    SourceBuffer.prototype.appendBuffer = function (data) {
+      try {
+        const st = sbState.get(this);
+        if (st) tapIngest(this, st, data);
+      } catch (e) { diag.tap = 'ingest ' + String((e && e.message) || e).slice(0, 60); }
+      return append.apply(this, arguments);
+    };
+    // When the page throws away part of what it buffered (seeking, an ad ending), so do we.
+    const remove = SourceBuffer.prototype.remove;
+    SourceBuffer.prototype.remove = function (from, to) {
+      try {
+        if (sbState.has(this)) {
+          for (const [key, rec] of tapSegs) {
+            if (rec.start + rec.dur > from && rec.start < to) tapSegs.delete(key);
+          }
+        }
+      } catch { /* never get in the page's way */ }
+      return remove.apply(this, arguments);
+    };
+    // Ask the site for MP4 audio (AAC), which the tap can read, rather than WebM.
+    const supported = MediaSource.isTypeSupported;
+    MediaSource.isTypeSupported = function (type) {
+      return /webm/i.test(String(type)) ? false : supported.apply(this, arguments);
+    };
+    const canPlay = HTMLMediaElement.prototype.canPlayType;
+    HTMLMediaElement.prototype.canPlayType = function (type) {
+      return /webm/i.test(String(type)) ? '' : canPlay.apply(this, arguments);
+    };
+    setInterval(tapSync, 120);
+  }
+
+  const tapWatched = new WeakSet();
+  if (window.__blowoutTest) window.__blowoutProbe = { tapReport, tapState, tapSegs, tapStats };
+
   function notice(el) {
     known.add(el);
+    if (tapMode && !tapWatched.has(el)) {
+      tapWatched.add(el);
+      for (const type of ['pause', 'playing', 'seeking', 'seeked', 'ratechange', 'waiting', 'ended']) el.addEventListener(type, tapSync);
+    }
     if (armed) hook(el);
   }
 
@@ -220,14 +528,13 @@
     for (const el of document.querySelectorAll('video, audio')) notice(el);
     for (const el of new Set([...document.querySelectorAll('video, audio'), ...known])) applyRate(el);
     if (!ctx) return;
-    let active = false;
+    let active = tapState.sources.size > 0;
     for (const el of hooked) {
       if (!el.paused && !el.ended && el.readyState > 2) active = true;
     }
     if (active) {
       const meter = measure();
       send({ type: 'meter', meter });
-      watchSignal(meter.peak);
     } else if (wasActive) send({ type: 'meter', meter: { bars: new Array(BARS).fill(0), peak: 0 } });
     wasActive = active;
   }, 40);
@@ -273,6 +580,7 @@
 
   function setLocal(changes) {
     local = { ...local, ...changes };
+    if (tapMode && !ctx) build(); // made inside the tap, so iOS lets it run
     if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); // iOS wants this inside a tap
     try { localStorage.setItem('blowout-panel', JSON.stringify(local)); } catch { /* storage blocked */ }
     if (appLinked) return;
@@ -350,17 +658,6 @@
     card.append(pitch);
     const note = el('p', { className: 'note' });
     card.append(clips, note);
-    // In the iPhone app only: a button that asks the app to switch to a playback mode iOS can
-    // process (the page is told it has no MediaSource, so it streams the way Safari natively does).
-    const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.blowout;
-    if (bridge) {
-      const compat = el('button', {
-        textContent: window.MediaSource || window.ManagedMediaSource ? 'COMPAT MODE: OFF (TAP IF BOOST DOES NOTHING)' : 'COMPAT MODE: ON (TAP TO TURN OFF)',
-        onclick: () => bridge.postMessage({ compat: 'toggle' }),
-      });
-      compat.style.cssText = 'width:100%;margin-bottom:8px;';
-      card.append(compat);
-    }
     // Phones only: a one-line status of the audio engine, for when boosting does nothing.
     const debug = window.__blowoutBookmarklet ? el('p', { className: 'note' }) : null;
     if (debug) {
@@ -374,7 +671,7 @@
           for (const v of data) if (Math.abs(v) > peak) peak = Math.abs(v);
         }
         const media = [...known].map((e) => e.tagName[0] + ':' + ((e.currentSrc || '').slice(0, 5) || (e.srcObject ? 'obj' : '-')) + ':' + (e.paused ? 'paused' : 'playing') + e.readyState).join(' ');
-        debug.textContent = 'engine: ctx ' + (ctx ? ctx.state + '@' + ctx.sampleRate : 'none') + ' | hooked ' + hooked.size + '/' + known.size + ' | peak ' + peak.toFixed(2) + ' | ' + (diag.err ? 'ERROR ' + diag.err : 'no error') + ' | rescue ' + rescue + ' ' + (diag.cap || '-') + ' | MSE ' + (window.MediaSource || window.ManagedMediaSource ? 'yes' : 'no') + ' | ' + media;
+        debug.textContent = 'engine: ctx ' + (ctx ? ctx.state + '@' + ctx.sampleRate : 'none') + ' | hooked ' + hooked.size + '/' + known.size + ' | peak ' + peak.toFixed(2) + ' | ' + (diag.err ? 'ERROR ' + diag.err : 'no error') + ' | ' + tapReport() + ' | MSE ' + (window.MediaSource || window.ManagedMediaSource ? 'yes' : 'no') + ' | ' + media;
       };
       setInterval(() => { if (!card.hidden) report(); }, 1000);
     }

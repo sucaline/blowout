@@ -58,19 +58,7 @@ struct ContentView: View {
             pill("LYRICS") { showLyrics = true }
             Spacer()
             icon("arrow.clockwise") { browser.webView.reload() }
-            Menu {
-                Button { browser.toggleDesktop() } label: {
-                    Label(browser.desktop ? "Desktop site: on" : "Desktop site: off", systemImage: browser.desktop ? "desktopcomputer" : "iphone")
-                }
-                Button { browser.toggleCompat() } label: {
-                    Label(browser.compat ? "Compat mode: on" : "Compat mode: off (try if boost does nothing)", systemImage: browser.compat ? "checkmark.circle.fill" : "circle")
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(width: 40, height: 40)
-            }
-            .foregroundColor(.white)
+            icon(browser.desktop ? "desktopcomputer" : "iphone") { browser.toggleDesktop() }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

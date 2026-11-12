@@ -28,7 +28,6 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     @Published var canGoForward = false
     @Published var loading = false
     @Published var desktop = false
-    @Published var compat = UserDefaults.standard.bool(forKey: "compat")
     @Published var track: Track?
 
     private var observers: [NSKeyValueObservation] = []
@@ -74,17 +73,9 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
 
     /// extension/page.js (the Chrome extension's engine), run only on the sites it is for, in
     /// the same standalone mode as the iPhone bookmark, plus a bridge that reports the song.
-    static func engineScript(compat: Bool) -> String? {
+    static func engineScript() -> String? {
         guard let url = Bundle.main.url(forResource: "page", withExtension: "js"),
               let page = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        // Compat mode hides MediaSource from the page, so YouTube plays with Safari's own
-        // streaming instead, which (unlike MediaSource playback) iOS can feed through Web Audio.
-        let compatCode = compat ? #"""
-          ['MediaSource', 'ManagedMediaSource', 'WebKitMediaSource'].forEach(function (name) {
-            try { delete window[name]; } catch (e) {}
-            if (name in window) { try { Object.defineProperty(window, name, { value: undefined, configurable: true }); } catch (e) {} }
-          });
-        """# : ""
         let prelude = #"""
         (function () {
           if (!/^(music\.|www\.|m\.)youtube\.com$|^open\.spotify\.com$/.test(location.hostname)) return;
@@ -108,7 +99,6 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
           document.addEventListener('pause', function () {
             if (!realHidden || !realHidden.call(document)) window.__bwPlaying = false;
           }, true);
-        """# + compatCode + #"""
 
           document.addEventListener('blowout:out', function (event) {
             try {
@@ -122,10 +112,6 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "blowout", let d = message.body as? [String: Any] else { return }
-        if d["compat"] != nil { // the panel's COMPAT MODE button
-            toggleCompat()
-            return
-        }
         func number(_ key: String) -> Double { (d[key] as? NSNumber)?.doubleValue ?? 0 }
         let rate = number("rate")
         track = Track(
@@ -177,16 +163,9 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     private func installScript() {
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()
-        if let source = Browser.engineScript(compat: compat) {
+        if let source = Browser.engineScript() {
             controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
-    }
-
-    func toggleCompat() {
-        compat.toggle()
-        UserDefaults.standard.set(compat, forKey: "compat")
-        installScript()
-        webView.reload()
     }
 
     // MARK: background playback
