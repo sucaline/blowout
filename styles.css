@@ -465,3 +465,7 @@ details summary { cursor: pointer; margin-top: 8px; }
   background: #151517; color: inherit; border: 1px solid #2a2a2e; border-radius: 6px; font: inherit;
 }
 .segmented.two { grid-template-columns: 1fr 1fr; }
+
+.presets.four { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.btn[data-speed].active { background: var(--volt); border-color: var(--volt); color: #171300; }
+.panel .opt .hint { flex: 1; }

@@ -20,7 +20,7 @@ const PRESETS = {
   fried: { bass: 26, freq: 140, loud: 20, clip: 'hard' },
   earrape: { bass: 40, freq: 180, loud: 40, clip: 'square' },
 };
-const DEFAULTS = { on: true, ...PRESETS.fried, out: 0.5 };
+const DEFAULTS = { on: true, ...PRESETS.fried, out: 0.5, speed: 1, keepPitch: true };
 
 let params = { ...DEFAULTS };
 try {
@@ -32,6 +32,7 @@ const sliders = {
   freq: { el: $('freq'), out: $('freq-out'), text: (v) => `below ${v} Hz` },
   loud: { el: $('loud'), out: $('loud-out'), text: (v) => `+${v} dB` },
   out: { el: $('out'), out: $('out-out'), text: (v) => `${v}%`, scale: 100 },
+  speed: { el: $('speed'), out: $('speed-out'), text: (v) => `${(v / 100).toFixed(2)}x`, scale: 100 },
 };
 
 function render() {
@@ -41,6 +42,10 @@ function render() {
     s.out.textContent = s.text(value);
     const fill = ((value - s.el.min) / (s.el.max - s.el.min)) * 100;
     s.el.style.setProperty('--fill', `${fill}%`);
+  }
+  $('keep-pitch').setAttribute('aria-checked', String(params.keepPitch !== false));
+  for (const b of document.querySelectorAll('[data-speed]')) {
+    b.classList.toggle('active', Math.abs(Number(b.dataset.speed) - params.speed) < 0.001);
   }
   $('power').setAttribute('aria-pressed', String(params.on));
   $('power').textContent = params.on ? 'BOOST: ON' : 'BOOST: OFF';
@@ -60,6 +65,10 @@ for (const [key, s] of Object.entries(sliders)) {
   s.el.addEventListener('input', () => update({ [key]: Number(s.el.value) / (s.scale || 1) }));
 }
 $('power').addEventListener('click', () => update({ on: !params.on }));
+$('keep-pitch').addEventListener('click', () => update({ keepPitch: params.keepPitch === false }));
+for (const b of document.querySelectorAll('[data-speed]')) {
+  b.addEventListener('click', () => update({ speed: Number(b.dataset.speed) }));
+}
 for (const b of document.querySelectorAll('[data-clip]')) {
   b.addEventListener('click', () => update({ clip: b.dataset.clip }));
 }
@@ -123,7 +132,7 @@ function position() {
   if (!track) return 0;
   if (source === 'file') return local.currentTime;
   if (track.paused) return track.time;
-  return track.time + Math.min(1, (performance.now() - track.at) / 1000);
+  return track.time + Math.min(1, (performance.now() - track.at) / 1000) * (track.rate || 1);
 }
 const duration = () => (source === 'file' ? local.duration || 0 : track ? track.duration : 0);
 const isPaused = () => (source === 'file' ? local.paused : !track || track.paused);

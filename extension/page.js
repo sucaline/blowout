@@ -16,7 +16,7 @@
   };
 
   // ---------- audio engine ----------
-  const NEUTRAL = { on: false, bass: 0, freq: 120, loud: 0, clip: 'hard', out: 1 };
+  const NEUTRAL = { on: false, bass: 0, freq: 120, loud: 0, clip: 'hard', out: 1, speed: 1, keepPitch: true };
   let params = NEUTRAL;
 
   function makeCurve(fn) {
@@ -74,6 +74,27 @@
       appliedCurve = curve;
     }
   }
+
+  // Speed: play faster or slower. With keepPitch (the default) the browser time-stretches the
+  // sound, so it stays the same pitch and doesn't go chipmunk or slurred; without it, pitch
+  // moves with speed (nightcore). Only touched when you change speed, so a site's own speed
+  // menu is left alone at 1x.
+  const retimed = new WeakSet();
+  function applyRate(el) {
+    const speed = Math.min(4, Math.max(0.25, Number(params.speed) || 1));
+    const keep = params.keepPitch !== false;
+    if (speed === 1) {
+      if (!retimed.has(el)) return;
+      retimed.delete(el);
+      el.preservesPitch = true;
+      el.playbackRate = 1;
+      return;
+    }
+    retimed.add(el);
+    if (el.preservesPitch !== keep) el.preservesPitch = keep;
+    if (Math.abs(el.playbackRate - speed) > 0.001) el.playbackRate = speed;
+  }
+
 
   function hook(el) {
     if (hooked.has(el)) return;
@@ -157,6 +178,7 @@
 
   setInterval(() => {
     for (const el of document.querySelectorAll('video, audio')) notice(el);
+    for (const el of new Set([...document.querySelectorAll('video, audio'), ...known])) applyRate(el);
     if (!ctx) return;
     let active = false;
     for (const el of hooked) {
@@ -182,6 +204,7 @@
         artist: info.artist || '',
         album: info.album || '',
         art,
+        rate: el ? el.playbackRate : 1,
         time: el ? el.currentTime : 0,
         duration: el && Number.isFinite(el.duration) ? el.duration : 0,
         paused: !el || el.paused,
@@ -272,6 +295,7 @@
     slider('bass', 'BASS', 0, 40);
     slider('loud', 'LOUD', 0, 40);
     slider('out', 'OUTPUT VOLUME', 0, 100, 100);
+    slider('speed', 'SPEED', 50, 200, 100);
 
     const clips = el('div', { className: 'clips' });
     const clipBtns = {};
@@ -279,6 +303,8 @@
       clipBtns[style] = el('button', { textContent: style.toUpperCase(), onclick: () => setLocal({ clip: style }) });
       clips.append(clipBtns[style]);
     }
+    const pitch = el('button', { onclick: () => setLocal({ keepPitch: !local.keepPitch }) });
+    card.append(pitch);
     const note = el('p', { className: 'note' });
     card.append(clips, note);
 
@@ -294,8 +320,10 @@
       pill.classList.toggle('live', shown.on);
       for (const [key, { input, out, scale }] of Object.entries(sliders)) {
         input.value = Math.round(shown[key] * scale);
-        out.textContent = key === 'out' ? Math.round(shown[key] * 100) + '%' : '+' + shown[key] + ' dB';
+        out.textContent = key === 'out' ? Math.round(shown[key] * 100) + '%' : key === 'speed' ? Number(shown.speed).toFixed(2) + 'x' : '+' + shown[key] + ' dB';
       }
+      pitch.textContent = shown.keepPitch === false ? 'KEEP PITCH: OFF (NIGHTCORE)' : 'KEEP PITCH: ON';
+      pitch.classList.toggle('on', shown.keepPitch !== false);
       for (const [style, btn] of Object.entries(clipBtns)) btn.classList.toggle('on', shown.clip === style);
       note.textContent = 'Clipping is a feature. Start with output volume low.';
     };

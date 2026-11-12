@@ -40,6 +40,7 @@ Windows SmartScreen will warn the first time it runs (More info, then Run anyway
 - **Links:** the address bar takes a link, a `spotify:` URI, or plain words (searches YouTube).
 - **Files:** OPEN FILE or drag one in (.mp3, .wav, .flac, .ogg, .m4a).
 - **Controls:** BASS and LOUD go to +40 dB each, three clip styles, four presets.
+- **Speed:** 0.5x to 2x for anything playing (files, YouTube, YouTube Music, Spotify, your Chrome). Pitch is kept by default, so slowed or sped-up songs stay clean instead of chipmunk or slurred; turn KEEP PITCH off for nightcore style (faster and higher).
 - **Output volume** comes after the clipper, so you can keep the crunch and turn the level down.
 - **Settings** (the gear in the top bar): pick a look (BLOWOUT, STAR RAIL or MATERIAL 3, which builds
   its colors from an accent you choose), calm mode (no pulsing or glitching), auto-open Now Playing,

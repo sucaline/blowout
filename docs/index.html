@@ -82,6 +82,14 @@
 
     <section class="group">
       <label class="slider">
+        <span class="label">SPEED <output id="speed-out">1.00x</output></span>
+        <input id="speed" type="range" min="50" max="200" step="5" value="100">
+      </label>
+      <div class="opt"><span class="hint">Keep pitch (no chipmunk or slurred sound)</span><button id="keep-pitch" class="switch" role="switch" aria-checked="true" aria-label="Keep pitch"><span></span></button></div>
+    </section>
+
+    <section class="group">
+      <label class="slider">
         <span class="label">OUTPUT VOLUME <output id="out-out"></output></span>
         <input id="out" type="range" min="0" max="100" step="1">
       </label>

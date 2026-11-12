@@ -343,3 +343,23 @@ document.getElementById('bm-copy').addEventListener('click', async () => {
     note.textContent = 'Could not copy. Open bookmarklet.txt on this site, select all of it, and copy it by hand.';
   }
 });
+
+// ---------- speed ----------
+const speedInput = $('speed');
+const keepBtn = $('keep-pitch');
+const applySpeed = () => {
+  const speed = Number(speedInput.value) / 100;
+  const keep = store('keepPitch') !== 'off';
+  local.playbackRate = speed;
+  local.preservesPitch = keep; // keeps the pitch where it was: no chipmunk or slurred sound
+  local.webkitPreservesPitch = keep; // older Safari
+  $('speed-out').textContent = speed.toFixed(2) + 'x';
+  keepBtn.setAttribute('aria-checked', keep);
+  speedInput.style.setProperty('--fill', ((speedInput.value - 50) / 150) * 100 + '%');
+};
+speedInput.value = Math.round((Number(store('speed')) || 1) * 100);
+speedInput.addEventListener('input', () => { store('speed', Number(speedInput.value) / 100); applySpeed(); });
+keepBtn.addEventListener('click', () => { store('keepPitch', store('keepPitch') === 'off' ? 'on' : 'off'); applySpeed(); });
+local.addEventListener('loadedmetadata', applySpeed); // a new song resets the rate; put it back
+local.addEventListener('play', applySpeed);
+applySpeed();

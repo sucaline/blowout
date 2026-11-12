@@ -237,6 +237,23 @@
 
       <div class="group">
         <label class="slider">
+          <span class="label">SPEED <output id="speed-out"></output></span>
+          <input id="speed" type="range" min="50" max="200" step="5">
+        </label>
+        <div class="presets four">
+          <button class="btn btn-small" data-speed="0.75">0.75x</button>
+          <button class="btn btn-small" data-speed="1">1x</button>
+          <button class="btn btn-small" data-speed="1.25">1.25x</button>
+          <button class="btn btn-small" data-speed="1.5">1.5x</button>
+        </div>
+        <div class="opt">
+          <p class="hint">Keep pitch (no chipmunk or slurred sound)</p>
+          <button id="keep-pitch" class="switch" role="switch" aria-checked="true" aria-label="Keep pitch"><span></span></button>
+        </div>
+      </div>
+
+      <div class="group">
+        <label class="slider">
           <span class="label">OUTPUT VOLUME <output id="out-out"></output></span>
           <input id="out" type="range" min="0" max="100" step="1">
         </label>

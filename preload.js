@@ -8,7 +8,7 @@ const { ipcRenderer, contextBridge, webFrame } = require('electron');
 
 const hello = ipcRenderer.sendSync('boost:hello'); // { role: 'host' | 'guest', params }
 
-const NEUTRAL = { on: false, bass: 0, freq: 120, loud: 0, clip: 'hard', out: 1 };
+const NEUTRAL = { on: false, bass: 0, freq: 120, loud: 0, clip: 'hard', out: 1, speed: 1, keepPitch: true };
 let params = hello.params || NEUTRAL;
 
 function makeCurve(fn) {
@@ -67,6 +67,26 @@ function apply(instant) {
   }
 }
 
+// Speed: play faster or slower. With keepPitch (the default) the browser time-stretches the
+// sound, so it stays the same pitch and doesn't go chipmunk or slurred; without it, pitch
+// moves with speed (nightcore). Only touched when you change speed, so a site's own speed
+// menu is left alone at 1x.
+const retimed = new WeakSet();
+function applyRate(el) {
+  const speed = Math.min(4, Math.max(0.25, Number(params.speed) || 1));
+  const keep = params.keepPitch !== false;
+  if (speed === 1) {
+    if (!retimed.has(el)) return;
+    retimed.delete(el);
+    el.preservesPitch = true;
+    el.playbackRate = 1;
+    return;
+  }
+  retimed.add(el);
+  if (el.preservesPitch !== keep) el.preservesPitch = keep;
+  if (Math.abs(el.playbackRate - speed) > 0.001) el.playbackRate = speed;
+}
+
 function hook(el) {
   if (hooked.has(el)) return;
   hooked.add(el);
@@ -115,6 +135,7 @@ function measure() {
 
 setInterval(() => {
   for (const el of document.querySelectorAll('video, audio')) hook(el);
+  for (const el of new Set([...document.querySelectorAll('video, audio'), ...hooked])) applyRate(el);
   let active = false;
   for (const el of hooked) {
     if (!el.paused && !el.ended && el.readyState > 2) active = true;
@@ -188,6 +209,7 @@ if (hello.role === 'guest') {
       time: el ? el.currentTime : 0,
       duration: el && Number.isFinite(el.duration) ? el.duration : 0,
       paused: !el || el.paused,
+      rate: el ? el.playbackRate : 1,
       host: location.host,
       clicked: Date.now() - clickedAt < 5000, // you just picked something, vs. autoplay moving on
     });

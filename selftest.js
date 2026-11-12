@@ -60,6 +60,15 @@ module.exports = async function selftest(win) {
   console.log('RESULT file clean ', JSON.stringify(clean));
   console.log('RESULT file fried ', JSON.stringify(fried));
 
+  // Speed: faster and slower, with and without keeping the pitch.
+  const rate = () => run(`JSON.stringify({ rate: local.playbackRate, keepPitch: local.preservesPitch, out: $('speed-out').textContent })`);
+  await run(`update({ speed: 1.5 })`); await sleep(600);
+  console.log('RESULT speed 1.5     ', await rate());
+  await run(`update({ speed: 0.75, keepPitch: false })`); await sleep(600);
+  console.log('RESULT speed .75 nc  ', await rate());
+  await run(`update({ speed: 1, keepPitch: true })`); await sleep(600);
+  console.log('RESULT speed back 1  ', await rate());
+
   // The three looks, each on Now Playing and on the Settings page.
   for (const look of ['starrail', 'material', 'blowout']) {
     await run(`applyLook('${look}'); setView('now', true)`);
