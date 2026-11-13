@@ -30,45 +30,86 @@ function parseLrc(text) {
 }
 
 // YouTube titles carry clutter like "(Official Video)" and channel names like "ArtistVEVO".
-const CLUTTER = /\s*[([][^)\]]*\b(official|video|audio|lyrics?|visuali[sz]er|remaster(ed)?|hd|4k|mv|explicit)\b[^)\]]*[)\]]/gi;
-const tidyTitle = (title) => title.replace(CLUTTER, '').trim();
+// Edits of a song (sped up, slowed, nightcore...) are a different length from the original, so
+// lyrics for them come from the original song with the timing stretched to fit.
+const TEMPO = /\b(sped[\s-]*up|speed(ed)?[\s-]*up|slowed|nightcore|reverb(ed)?|8d)\b/i;
+const CLUTTER = /\s*[([][^)\]]*\b(official|video|audio|lyrics?|visuali[sz]er|remaster(ed)?|hd|4k|mv|explicit|sped[\s-]*up|speed(ed)?[\s-]*up|slowed|nightcore|reverb(ed)?|8d|tiktok)\b[^)\]]*[)\]]/gi;
+const tidyTitle = (title) => title.split(/\s+\|\s+/)[0].replace(CLUTTER, '').replace(/\s+/g, ' ').trim();
 const tidyArtist = (artist) => artist.replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, '').trim();
 
-async function search(title, artist, duration, strict) {
-  const params = new URLSearchParams({ track_name: title });
-  if (artist) params.set('artist_name', artist);
+// Does a database entry really name the song we are playing? (A close length alone is not enough:
+// that is how a pop song ended up with the lyrics of an unrelated Chinese one.)
+const norm = (s) => String(s || '').toLowerCase().replace(/[([].*?[)\]]/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+function similar(a, b) {
+  const x = norm(a);
+  const y = norm(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (Math.min(x.length, y.length) >= 4 && (x.includes(y) || y.includes(x))) return true;
+  const wa = new Set(x.split(' '));
+  const wb = new Set(y.split(' '));
+  let common = 0;
+  for (const w of wa) if (wb.has(w)) common++;
+  return common / Math.min(wa.size, wb.size) >= 0.6 && common >= 1 && Math.min(wa.size, wb.size) >= 2;
+}
+// `ids` = who the song is by: [artist from the title ("Artist - Song"), the uploader's name].
+function matches(name, who, wanted, ids) {
+  if (!similar(name, wanted.song)) return false;
+  if (norm(name) === norm(wanted.song) && !wanted.byInTitle) return true; // exact name, artist only a channel name
+  return ids.filter(Boolean).some((id) => similar(who, id));
+}
+
+// How far off is a length? Edits are allowed to be any length (the timing gets stretched).
+function lengthOk(candidate, wanted, limit) {
+  if (!wanted.duration || !candidate) return true;
+  if (wanted.tempo) return candidate / wanted.duration > 0.5 && candidate / wanted.duration < 2;
+  return Math.abs(candidate - wanted.duration) <= limit;
+}
+
+async function search(wanted, artist, strict) {
+  const params = new URLSearchParams({ track_name: wanted.song });
+  if (wanted.by || artist) params.set('artist_name', wanted.by || artist);
   let results = (await getJson(`${LRCLIB}/search?${params}`)) || [];
   results = results.filter((r) => r.syncedLyrics || r.plainLyrics || r.instrumental);
-  const off = (r) => (duration ? Math.abs(r.duration - duration) : 0);
+  const off = (r) => (wanted.duration ? Math.abs(r.duration - wanted.duration) : 0);
   // A bare file name can match the wrong song, so files must also match on length.
-  if (strict) results = results.filter((r) => off(r) <= 3);
+  results = results.filter((r) => matches(r.trackName, r.artistName, wanted, [wanted.by, artist]) && lengthOk(r.duration, wanted, strict ? 3 : 25));
   results.sort((a, b) => Boolean(b.syncedLyrics) - Boolean(a.syncedLyrics) || off(a) - off(b));
   return results[0] || null;
 }
 
 // Fallback 1: LRCLIB's free-text search, for titles the exact search can't parse.
-async function looseSearch(title, artist, duration, strict) {
-  const q = new URLSearchParams({ q: `${artist} ${title}`.trim() });
+async function looseSearch(wanted, artist, strict) {
+  const q = new URLSearchParams({ q: `${wanted.by || artist} ${wanted.song}`.trim() });
   let results = ((await getJson(`${LRCLIB}/search?${q}`)) || []).filter((r) => r.syncedLyrics || r.plainLyrics);
-  const off = (r) => (duration ? Math.abs(r.duration - duration) : 0);
-  results = results.filter((r) => off(r) <= (strict ? 3 : 8));
+  const off = (r) => (wanted.duration ? Math.abs(r.duration - wanted.duration) : 0);
+  results = results.filter((r) => matches(r.trackName, r.artistName, wanted, [wanted.by, artist]) && lengthOk(r.duration, wanted, strict ? 3 : 12));
   results.sort((a, b) => Boolean(b.syncedLyrics) - Boolean(a.syncedLyrics) || off(a) - off(b));
   return results[0] || null;
 }
 
+// Stretch (or squeeze) timed lines from the original's length to the edit's length.
+function fit(lines, from, wanted) {
+  if (!lines || !wanted.tempo || !from || !wanted.duration) return lines;
+  const k = wanted.duration / from;
+  return k > 0.5 && k < 2 ? lines.map((l) => ({ ...l, t: l.t * k })) : lines;
+}
+
 // Fallback 2: NetEase Cloud Music's public endpoints, which have timed lyrics for a lot of
 // songs LRCLIB lacks. Unofficial, so it may stop working; a miss just falls through.
-async function neteaseSearch(title, artist, duration) {
-  const s = new URLSearchParams({ s: `${artist} ${title}`.trim(), type: '1', limit: '5' });
+async function neteaseSearch(wanted, artist) {
+  const s = new URLSearchParams({ s: `${wanted.by || artist} ${wanted.song}`.trim(), type: '1', limit: '8' });
   const found = await getJson(`https://music.163.com/api/search/get?${s}`);
   const songs = (found && found.result && found.result.songs) || [];
-  const off = (song) => (duration ? Math.abs(song.duration / 1000 - duration) : 0);
-  for (const song of songs.filter((x) => off(x) <= 6).sort((x, y) => off(x) - off(y))) {
+  const off = (song) => (wanted.duration ? Math.abs(song.duration / 1000 - wanted.duration) : 0);
+  const named = songs.filter((x) => lengthOk(x.duration / 1000, wanted, 6)
+    && matches(x.name, (x.artists || []).map((a) => a.name).join(' '), wanted, [wanted.by, artist]));
+  for (const song of named.sort((x, y) => off(x) - off(y))) {
     const data = await getJson(`https://music.163.com/api/song/lyric?id=${song.id}&lv=1`);
     const lrc = data && data.lrc && data.lrc.lyric;
     const synced = lrc ? parseLrc(lrc).filter((l) => l.text) : [];
     if (synced.length > 3) {
-      return { synced, plain: '', instrumental: false, matched: `${song.artists[0].name} - ${song.name}` };
+      return { synced: fit(synced, song.duration / 1000, wanted), plain: '', instrumental: false, matched: `${song.artists[0].name} - ${song.name}` };
     }
   }
   return null;
@@ -87,14 +128,16 @@ async function find({ title = '', artist = '', duration = 0, strict = false }) {
   const a = tidyArtist(artist);
   // "Artist - Song" all in the title (YouTube uploads, file names).
   const parts = t.split(/\s+[-–—]\s+/);
-  const [song, by] = parts.length === 2 ? [parts[1], parts[0]] : [t, a];
+  const byInTitle = parts.length === 2;
+  const [song, by] = byInTitle ? [parts[1], parts[0]] : [t, ''];
+  const wanted = { song, by, byInTitle, duration, tempo: TEMPO.test(title) };
 
-  let hit = t ? await search(t, a, duration, strict) : null;
-  if (!hit && parts.length === 2) hit = await search(song, by, duration, strict);
-  if (!hit && t) hit = await looseSearch(song, by, duration, strict);
+  // Other spellings of the same song to try: the whole title, then just the song part.
+  let hit = t ? await search(wanted, a, strict) : null;
+  if (!hit && t) hit = await looseSearch(wanted, a, strict);
   if (hit) {
     return {
-      synced: hit.syncedLyrics ? parseLrc(hit.syncedLyrics) : null,
+      synced: hit.syncedLyrics ? fit(parseLrc(hit.syncedLyrics), hit.duration, wanted) : null,
       plain: hit.plainLyrics || '',
       instrumental: Boolean(hit.instrumental),
       matched: `${hit.artistName} - ${hit.trackName}`,
@@ -102,7 +145,7 @@ async function find({ title = '', artist = '', duration = 0, strict = false }) {
   }
   if (!t) return null;
   // Files only have their name to go on, so skip the sources that can't check the length.
-  return (await neteaseSearch(song, by, duration)) || (strict ? null : await ovhSearch(song, by));
+  return (await neteaseSearch(wanted, a)) || (strict ? null : await ovhSearch(song, by || a));
 }
 
 async function translate(lines, lang) {
@@ -166,3 +209,5 @@ module.exports = function registerLyrics(isHost) {
     return result;
   });
 };
+
+module.exports.find = find; // for tests

@@ -23,32 +23,56 @@ final class LyricsModel: ObservableObject {
         timed = false
         status = "Looking for lyrics…"
 
-        let cleanTitle = Self.cleanTitle(title)
-        let cleanArtist = Self.cleanArtist(artist)
-        var found: (synced: String, plain: String)?
+        // Sped-up, slowed and similar uploads are a different length from the original song, so
+        // the lyrics come from the original with the timing stretched to fit.
+        let tempo = title.range(of: "sped[ -]*up|speed(ed)?[ -]*up|slowed|nightcore|reverb|8d", options: [.regularExpression, .caseInsensitive]) != nil
+        var cleanTitle = Self.cleanTitle(title)
+        var cleanArtist = Self.cleanArtist(artist)
+        var byInTitle = false
+        let pieces = cleanTitle.components(separatedBy: " - ")
+        if pieces.count == 2 { // "Artist - Song" all in the title
+            cleanArtist = pieces[0].trimmingCharacters(in: .whitespaces)
+            cleanTitle = pieces[1].trimmingCharacters(in: .whitespaces)
+            byInTitle = true
+        }
+        var found: (synced: String, plain: String, length: Double)?
 
-        var get = URLComponents(string: "https://lrclib.net/api/get")
-        get?.queryItems = [
-            URLQueryItem(name: "track_name", value: cleanTitle),
-            URLQueryItem(name: "artist_name", value: cleanArtist),
-            URLQueryItem(name: "duration", value: String(Int(duration.rounded()))),
-        ]
-        if let url = get?.url, let object = await Self.fetch(url) as? [String: Any] {
-            found = Self.lyrics(in: object)
+        if !tempo { // the exact lookup needs the length to match, which an edit never does
+            var get = URLComponents(string: "https://lrclib.net/api/get")
+            get?.queryItems = [
+                URLQueryItem(name: "track_name", value: cleanTitle),
+                URLQueryItem(name: "artist_name", value: cleanArtist),
+                URLQueryItem(name: "duration", value: String(Int(duration.rounded()))),
+            ]
+            if let url = get?.url, let object = await Self.fetch(url) as? [String: Any] {
+                found = Self.lyrics(in: object)
+            }
         }
 
         if found == nil {
             var search = URLComponents(string: "https://lrclib.net/api/search")
             search?.queryItems = [URLQueryItem(name: "q", value: "\(cleanArtist) \(cleanTitle)")]
             if let url = search?.url, let results = await Self.fetch(url) as? [[String: Any]] {
-                let all = results.map { Self.lyrics(in: $0) }
+                // Only entries that really name this song (a close length alone is not enough).
+                let good = results.filter { object in
+                    let name = object["trackName"] as? String ?? ""
+                    let by = object["artistName"] as? String ?? ""
+                    guard Self.similar(name, cleanTitle) else { return false }
+                    if !byInTitle && Self.norm(name) == Self.norm(cleanTitle) { return true }
+                    return Self.similar(by, cleanArtist)
+                }
+                let all = good.map { Self.lyrics(in: $0) }
                 found = all.first(where: { !$0.synced.isEmpty }) ?? all.first(where: { !$0.plain.isEmpty })
             }
         }
 
         guard loadedKey == key else { return } // the song changed while we were looking
         if let found = found, !found.synced.isEmpty {
-            let parsed = Self.parse(found.synced)
+            var parsed = Self.parse(found.synced)
+            if tempo, found.length > 0, duration > 0 {
+                let k = duration / found.length
+                if k > 0.5 && k < 2 { parsed = parsed.map { LyricLine(id: $0.id, time: $0.time * k, text: $0.text) } }
+            }
             if !parsed.isEmpty {
                 lines = parsed
                 timed = true
@@ -66,8 +90,29 @@ final class LyricsModel: ObservableObject {
 
     // MARK: helpers
 
-    private static func lyrics(in object: [String: Any]) -> (synced: String, plain: String) {
-        (object["syncedLyrics"] as? String ?? "", object["plainLyrics"] as? String ?? "")
+    private static func lyrics(in object: [String: Any]) -> (synced: String, plain: String, length: Double) {
+        (object["syncedLyrics"] as? String ?? "", object["plainLyrics"] as? String ?? "", (object["duration"] as? NSNumber)?.doubleValue ?? 0)
+    }
+
+    static func norm(_ text: String) -> String {
+        var t = text.lowercased()
+        t = t.replacingOccurrences(of: "[\\(\\[][^\\)\\]]*[\\)\\]]", with: " ", options: .regularExpression)
+        t = t.replacingOccurrences(of: "[^\\p{L}\\p{N}\\s]", with: " ", options: .regularExpression)
+        t = t.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return t.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Do two names mean the same song or artist?
+    static func similar(_ a: String, _ b: String) -> Bool {
+        let x = norm(a)
+        let y = norm(b)
+        if x.isEmpty || y.isEmpty { return false }
+        if x == y { return true }
+        if min(x.count, y.count) >= 4 && (x.contains(y) || y.contains(x)) { return true }
+        let wa = Set(x.split(separator: " "))
+        let wb = Set(y.split(separator: " "))
+        let shortest = min(wa.count, wb.count)
+        return shortest >= 2 && Double(wa.intersection(wb).count) / Double(shortest) >= 0.6
     }
 
     private static func fetch(_ url: URL) async -> Any? {
@@ -102,8 +147,8 @@ final class LyricsModel: ObservableObject {
 
     /// Drops "(Official Video)", "[Lyrics]" and the like.
     static func cleanTitle(_ title: String) -> String {
-        var result = title
-        for pattern in ["\\s*[\\(\\[][^\\)\\]]*(official|video|audio|lyrics?|visualizer|remaster)[^\\)\\]]*[\\)\\]]"] {
+        var result = title.components(separatedBy: " | ").first ?? title
+        for pattern in ["\\s*[\\(\\[][^\\)\\]]*(official|video|audio|lyrics?|visualizer|remaster|sped[ -]*up|speed(ed)?[ -]*up|slowed|nightcore|reverb|8d|tiktok)[^\\)\\]]*[\\)\\]]"] {
             result = result.replacingOccurrences(of: pattern, with: "", options: [.regularExpression, .caseInsensitive])
         }
         return result.trimmingCharacters(in: .whitespaces)
